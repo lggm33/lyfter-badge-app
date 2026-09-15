@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lyfter Badge App
 
-## Getting Started
+Plataforma mobile-first para convertir la asistencia a eventos en badges, XP y recompensas.
 
-First, run the development server:
+## Estado actual
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+La fundación está lista: Next.js con App Router, TypeScript, Tailwind CSS y ESLint. La landing inicial usa la identidad visual de Lyfter y no requiere servicios externos.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Requisitos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Node.js compatible con Next.js 16
+- pnpm 11+
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Desarrollo local
 
-## Learn More
+    pnpm install
+    pnpm dev
 
-To learn more about Next.js, take a look at the following resources:
+Abrí http://localhost:3000.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Comandos
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+    pnpm dev       # servidor de desarrollo
+    pnpm lint      # validación de ESLint
+    pnpm start     # servidor de producción
 
-## Deploy on Vercel
+## Estructura actual
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+    app/
+      globals.css  # estilos globales y paleta Lyfter
+      layout.tsx   # layout raíz y metadata
+      page.tsx     # landing page
+    public/        # assets estáticos
+    mocks/         # referencias visuales del proyecto
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Próximas fases
+
+1. Persistencia con PostgreSQL y Drizzle.
+2. Autenticación y autorización por roles.
+3. Empresas, eventos, badges y estaciones QR.
+4. Check-in, redenciones, XP y leaderboards.
+
+Los requisitos completos están en Requirements.md.
