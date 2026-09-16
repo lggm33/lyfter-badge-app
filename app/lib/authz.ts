@@ -44,6 +44,34 @@ export async function requireRole(role: GlobalRole) {
   return session;
 }
 
+async function hasCompanyMembership(userId: string, companyId: string) {
+  const [membership] = await db
+    .select({ id: companyMember.id })
+    .from(companyMember)
+    .where(
+      and(
+        eq(companyMember.companyId, companyId),
+        eq(companyMember.userId, userId),
+      ),
+    );
+
+  return Boolean(membership);
+}
+
+/**
+ * Panel de empresa: sesión + fila en company_member para esa empresa.
+ * SUPER_ADMIN no entra por acá; su superficie es /admin.
+ */
+export async function requireCompanyMembership(companyId: string) {
+  const session = await requireSession();
+
+  if (await hasCompanyMembership(session.user.id, companyId)) {
+    return session;
+  }
+
+  redirect(DENIED);
+}
+
 /** SUPER_ADMIN entra a cualquier empresa; el resto necesita fila en company_member. */
 export async function requireCompanyAccess(companyId: string) {
   const session = await requireSession();
@@ -52,19 +80,9 @@ export async function requireCompanyAccess(companyId: string) {
     return session;
   }
 
-  const [membership] = await db
-    .select({ id: companyMember.id })
-    .from(companyMember)
-    .where(
-      and(
-        eq(companyMember.companyId, companyId),
-        eq(companyMember.userId, session.user.id),
-      ),
-    );
-
-  if (!membership) {
-    redirect(DENIED);
+  if (await hasCompanyMembership(session.user.id, companyId)) {
+    return session;
   }
 
-  return session;
+  redirect(DENIED);
 }

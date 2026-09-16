@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createCompany, listCompanies } from "./actions";
 import { LogoutButton } from "@/components/logout-button";
 
@@ -58,7 +59,12 @@ export default async function CompaniesPage() {
             <ul className="mt-4 grid gap-3">
               {companies.map((item) => (
                 <li className="rounded-2xl bg-white p-5 shadow-sm" key={item.id}>
-                  <p className="font-bold text-slate-800">{item.name}</p>
+                  <Link
+                    className="font-bold text-slate-800 hover:text-[#71ceff]"
+                    href={`/admin/companies/${item.id}`}
+                  >
+                    {item.name}
+                  </Link>
                   <p className="mt-1 text-sm text-slate-500">/{item.slug}</p>
                 </li>
               ))}

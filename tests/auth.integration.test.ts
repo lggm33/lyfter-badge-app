@@ -79,8 +79,11 @@ describe("auth integration", () => {
     ).resolves.toBe("protected");
 
     headersMock.mockResolvedValueOnce(new Headers({ cookie: sessionCookie }));
+    headersMock.mockResolvedValueOnce(new Headers({ cookie: sessionCookie }));
     const homeMarkup = renderToStaticMarkup(await HomePage());
     expect(homeMarkup).toContain("Hola, Vitest Integration User");
+    expect(homeMarkup).not.toContain("Mis empresas");
+    expect(homeMarkup).not.toContain("Tu empresa");
 
     const signOutResponse = await postAuth("/sign-out", {}, sessionCookie);
     expect(signOutResponse.status).toBe(200);

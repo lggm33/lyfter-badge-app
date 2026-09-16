@@ -15,6 +15,7 @@ vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 import {
   getGlobalRole,
   requireCompanyAccess,
+  requireCompanyMembership,
   requireRole,
   requireSession,
 } from "@/app/lib/authz";
@@ -138,6 +139,16 @@ describe("authz integration", () => {
 
     withCookie(participantCookie);
     await expect(requireCompanyAccess(companyId)).resolves.toMatchObject({
+      user: { id: participantId },
+    });
+
+    withCookie(adminCookie);
+    await expect(requireCompanyMembership(companyId)).rejects.toThrow(
+      "REDIRECT:/home",
+    );
+
+    withCookie(participantCookie);
+    await expect(requireCompanyMembership(companyId)).resolves.toMatchObject({
       user: { id: participantId },
     });
   });
