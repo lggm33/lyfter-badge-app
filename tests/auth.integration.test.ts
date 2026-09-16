@@ -19,56 +19,22 @@ vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => routerMock),
 }));
 
-import { POST as authPost } from "@/app/api/auth/[...all]/route";
 import { auth } from "@/app/lib/auth";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
 import HomePage from "@/app/(protected)/home/page";
 import ProtectedLayout from "@/app/(protected)/layout";
+import { cookieHeader, postAuth, requireTestEnv, uniqueEmail } from "./helpers";
 
-const email = `vitest-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+const email = uniqueEmail("auth");
 const password = "integration-test-password";
 let userId: string | undefined;
 
-function cookieHeader(response: Response) {
-  const responseHeaders = response.headers as Headers & {
-    getSetCookie?: () => string[];
-  };
-  const cookies = responseHeaders.getSetCookie?.() ??
-    response.headers.get("set-cookie")?.split(/,(?=[^;,]+=)/) ?? [];
-
-  return cookies.map((cookie) => cookie.split(";", 1)[0]).join("; ");
-}
-
-async function postAuth(path: string, body: Record<string, unknown>, cookie?: string) {
-  return authPost(
-    new Request(`http://localhost:3000/api/auth${path}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        origin: "http://localhost:3000",
-        ...(cookie ? { cookie } : {}),
-      },
-      body: JSON.stringify(body),
-    }),
-  );
-}
-
 describe("auth integration", () => {
-  beforeAll(() => {
-    for (const key of ["DATABASE_URL", "BETTER_AUTH_SECRET"]) {
-      if (!process.env[key]) {
-        throw new Error(`${key} must be set to run the Railway integration test`);
-      }
-    }
-  });
+  beforeAll(requireTestEnv);
 
+  // Por email, no por id: si el test falla antes de capturar el id, igual limpia.
   afterAll(async () => {
-    if (userId) {
-      await db.delete(user).where(eq(user.id, userId));
-      return;
-    }
-
     await db.delete(user).where(eq(user.email, email));
   });
 
@@ -82,7 +48,14 @@ describe("auth integration", () => {
 
     const signUpPayload = await signUpResponse.json();
     userId = signUpPayload.user.id;
-    expect(signUpPayload.user.role).toBe("PARTICIPANT");
+    // El rol no se expone al cliente; vive solo en la DB.
+    expect(signUpPayload.user).not.toHaveProperty("role");
+
+    const [persisted] = await db
+      .select({ role: user.role })
+      .from(user)
+      .where(eq(user.id, userId!));
+    expect(persisted.role).toBe("PARTICIPANT");
 
     const signInResponse = await postAuth("/sign-in/email", { email, password });
     expect(signInResponse.status).toBe(200);

@@ -20,9 +20,16 @@ Abrí http://localhost:3000.
 
 ## Comandos
 
-    pnpm dev       # servidor de desarrollo
-    pnpm lint      # validación de ESLint
-    pnpm start     # servidor de producción
+    pnpm dev          # servidor de desarrollo
+    pnpm lint         # validación de ESLint
+    pnpm test         # tests de integración (requiere DATABASE_URL)
+    pnpm start        # servidor de producción
+    pnpm db:generate  # genera migraciones desde el schema
+    pnpm db:migrate   # aplica migraciones pendientes
+    pnpm db:seed      # crea/promueve el Super Admin inicial (idempotente)
+
+`pnpm db:seed` lee `SUPER_ADMIN_EMAIL` y `SUPER_ADMIN_PASSWORD` de `.env`. Si el
+email ya existe solo garantiza el rol `SUPER_ADMIN`; nunca pisa la contraseña.
 
 ## Estructura actual
 
@@ -32,6 +39,21 @@ Abrí http://localhost:3000.
       page.tsx     # landing page
     public/        # assets estáticos
     mocks/         # referencias visuales del proyecto
+
+## Rutas por experiencia
+
+Cada experiencia tiene su propio espacio. La autorización se valida siempre en
+el servidor; los grupos de rutas solo organizan la navegación.
+
+| Experiencia | Ruta base | Acceso |
+| --- | --- | --- |
+| Participante | `/home`, `/scan`, `/badges`, `/leaderboard` | Usuario autenticado |
+| Administrador de empresa | `/company/[companyId]` | `COMPANY_ADMIN` con membresía |
+| Login de Super Admin | `/admin/login` | Público; solo permite ingresar a usuarios `SUPER_ADMIN` |
+| Super administrador | `/admin`, `/admin/companies`, `/admin/users`, `/admin/audit` | Usuario autenticado con rol `SUPER_ADMIN` |
+
+Actualmente están disponibles `/home`, `/admin/login` y `/admin/companies`. Las
+demás rutas se agregarán junto con sus slices funcionales.
 
 ## Próximas fases
 

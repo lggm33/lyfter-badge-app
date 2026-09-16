@@ -4,12 +4,12 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/app/lib/auth-client";
 import { Button } from "@/components/ui/button";
 
-export function LogoutButton() {
+export function LogoutButton({ redirectTo = "/" }: { redirectTo?: string }) {
   const router = useRouter();
 
   async function handleLogout() {
     await authClient.signOut();
-    router.push("/");
+    router.push(redirectTo);
     router.refresh();
   }
 

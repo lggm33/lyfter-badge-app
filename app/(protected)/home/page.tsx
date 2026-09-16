@@ -1,15 +1,9 @@
-import { headers } from "next/headers";
-import { auth } from "@/app/lib/auth";
+import { requireSession } from "@/app/lib/authz";
 import { LogoutButton } from "@/components/logout-button";
 
 export default async function HomePage() {
-  // ponytail: (protected)/layout.tsx ya redirige si no hay sesión;
-  // esta lectura es solo para mostrar el nombre del usuario.
-  const session = await auth.api.getSession({ headers: await headers() });
 
-  if (!session) {
-    return null;
-  }
+  const session = await requireSession();
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-start justify-center gap-6 px-6">

@@ -19,7 +19,10 @@ export const auth = betterAuth({
                 type: "string",
                 required: true,
                 defaultValue: "PARTICIPANT",
+                // El cliente no lo escribe (input) ni lo lee (returned).
+                // La autorización lee el rol de la DB en app/lib/authz.ts.
                 input: false,
+                returned: false,
             },
         },
     },
