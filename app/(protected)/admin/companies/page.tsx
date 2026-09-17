@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { createCompany, listCompanies } from "./actions";
-import { LogoutButton } from "@/components/logout-button";
 
 export default async function CompaniesPage() {
   const companies = await listCompanies();
@@ -16,7 +15,6 @@ export default async function CompaniesPage() {
       <p className="mt-3 text-slate-600">
         Creá las empresas que van a administrar sus propios eventos.
       </p>
-      <LogoutButton redirectTo="/admin/login" />
 
       <section className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,22rem)_1fr]">
         <form action={createCompany} className="rounded-3xl bg-white p-6 shadow-sm">

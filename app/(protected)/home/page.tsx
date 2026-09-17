@@ -1,5 +1,4 @@
 import { requireSession } from "@/app/lib/authz";
-import { LogoutButton } from "@/components/logout-button";
 import { listMyCompanies } from "./actions";
 import { MyCompanies } from "./my-companies";
 
@@ -20,7 +19,6 @@ export default async function HomePage() {
         partida.
       </p>
       <MyCompanies companies={companies} />
-      <LogoutButton />
     </main>
   );
 }
