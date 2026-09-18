@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "@/auth-schema";
 
 export const company = pgTable("company", {
@@ -49,4 +49,24 @@ export const event = pgTable(
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
   (table) => [uniqueIndex("event_company_slug_idx").on(table.companyId, table.slug)],
+);
+
+export const badge = pgTable(
+  "badge",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    type: text("type").notNull(),
+    rarity: text("rarity").notNull(),
+    icon: text("icon"),
+    xp: integer("xp").notNull(),
+    required: boolean("required").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex("badge_event_name_idx").on(table.eventId, table.name)],
 );
