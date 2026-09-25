@@ -16,7 +16,10 @@ export function scanNextPath(next: string | null | undefined) {
   return "/home";
 }
 
-export function loginPathForScan(token: string) {
-  const next = `${SCAN_PAGE}?t=${encodeURIComponent(token)}`;
-  return `/login?next=${encodeURIComponent(next)}`;
+export function accountChoiceLinks(token: string) {
+  const next = encodeURIComponent(`${SCAN_PAGE}?t=${encodeURIComponent(token)}`);
+  return {
+    login: `/login?next=${next}`,
+    register: `/register?next=${next}`,
+  };
 }

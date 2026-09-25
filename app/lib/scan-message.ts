@@ -17,6 +17,15 @@ export type RedeemResult = RedeemSuccess | RedeemFailure;
 
 export type ScanResult = ({ flow: "checkin" } & CheckInResult) | ({ flow: "redeem" } & RedeemResult);
 
+/** After a successful scan from a QR link, leave the code form and open home. */
+export function destinationAfterScan(result: ScanResult) {
+  if (!result.ok) return null;
+  if (result.flow === "checkin") {
+    return `/home?notice=checkin&name=${encodeURIComponent(result.eventName)}`;
+  }
+  return `/home?notice=badge&name=${encodeURIComponent(result.badgeName)}&xp=${result.xp}`;
+}
+
 export function scanMessage(result: ScanResult) {
   if (result.flow === "checkin") {
     return checkInMessage(result);

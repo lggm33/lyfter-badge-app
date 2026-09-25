@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { checkIn } from "@/app/lib/check-in";
 import { QR_GRACE_WINDOWS, QR_WINDOW_SECONDS, signQrToken } from "@/app/lib/qr-token";
-import { scanNextPath } from "@/app/lib/scan-next";
+import { accountChoiceLinks, scanNextPath } from "@/app/lib/scan-next";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { company, event, eventMembership } from "@/db/schema";
@@ -167,5 +167,9 @@ describe("check-in", () => {
     expect(scanNextPath("https://evil.example/scan?t=1")).toBe("/home");
     expect(scanNextPath("/scan?t=abc")).toBe("/scan?t=abc");
     expect(scanNextPath("/scan")).toBe("/scan");
+    expect(accountChoiceLinks("abc")).toEqual({
+      login: "/login?next=%2Fscan%3Ft%3Dabc",
+      register: "/register?next=%2Fscan%3Ft%3Dabc",
+    });
   });
 });

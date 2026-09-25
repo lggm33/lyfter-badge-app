@@ -5,8 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/app/lib/auth";
 import { extractScanToken } from "@/app/lib/check-in";
 import { scanToken } from "@/app/lib/scan";
-import type { ScanResult } from "@/app/lib/scan-message";
-import { loginPathForScan } from "@/app/lib/scan-next";
+import { destinationAfterScan, type ScanResult } from "@/app/lib/scan-message";
 
 export async function submitScan(
   _previous: ScanResult | null,
@@ -16,10 +15,13 @@ export async function submitScan(
   const userId = await currentUserId();
 
   if (!userId) {
-    redirect(loginPathForScan(token));
+    redirect(`/scan?t=${encodeURIComponent(token)}`);
   }
 
-  return scanToken(token, userId);
+  const result = await scanToken(token, userId);
+  const destination = destinationAfterScan(result);
+  if (destination) redirect(destination);
+  return result;
 }
 
 export async function currentUserId() {
