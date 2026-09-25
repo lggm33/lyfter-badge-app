@@ -80,8 +80,11 @@ describe("auth integration", () => {
 
     headersMock.mockResolvedValueOnce(new Headers({ cookie: sessionCookie }));
     headersMock.mockResolvedValueOnce(new Headers({ cookie: sessionCookie }));
+    headersMock.mockResolvedValueOnce(new Headers({ cookie: sessionCookie }));
     const homeMarkup = renderToStaticMarkup(await HomePage());
     expect(homeMarkup).toContain("Hola, Vitest Integration User");
+    expect(homeMarkup).toContain("0 XP");
+    expect(homeMarkup).toContain("Todavía no canjeaste badges.");
     expect(homeMarkup).not.toContain("Mis empresas");
     expect(homeMarkup).not.toContain("Tu empresa");
 
