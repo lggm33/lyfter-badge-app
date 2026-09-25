@@ -1,0 +1,66 @@
+name: CI / Deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false # nunca cortar una migración o un deploy a la mitad
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lyfter_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    # Postgres efímero: los tests de integración nunca tocan la DB de Railway.
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lyfter_test
+      BETTER_AUTH_SECRET: ci-only-secret-not-used-anywhere-else
+      BETTER_AUTH_URL: http://localhost:3000
+      QR_SECRET: ci-only-qr-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # toma la versión de packageManager
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # igual que el runtime del proyecto en Vercel
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm db:migrate
+      - run: pnpm lint
+      - run: pnpm test
+
+  deploy:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      VERCEL_ORG_ID: team_hbEFCMIIaBh3aiXnLdqQ9j4A
+      VERCEL_PROJECT_ID: prj_6MRbgeqOD0iEZGri1MrEBZAJJNav
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Antes del deploy: el código nuevo nunca arranca contra un schema viejo.
+      # Las migraciones deben ser backward-compatible (expand/contract).
+      - name: Migrate production DB
+        run: pnpm db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+      # Build remoto en Vercel: las env vars son sensitive y no se pueden bajar con vercel pull.
+      - name: Deploy to Vercel
+        run: pnpm dlx vercel@59 deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
