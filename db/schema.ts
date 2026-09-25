@@ -70,3 +70,17 @@ export const badge = pgTable(
   },
   (table) => [uniqueIndex("badge_event_name_idx").on(table.eventId, table.name)],
 );
+
+export const qrDisplay = pgTable("qr_display", {
+  id: text("id").primaryKey(),
+  eventId: text("event_id")
+    .notNull()
+    .references(() => event.id, { onDelete: "cascade" }),
+  badgeId: text("badge_id").references(() => badge.id, { onDelete: "cascade" }), // null = check-in
+  linkTokenHash: text("link_token_hash").notNull().unique(),
+  deviceTokenHash: text("device_token_hash").unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  claimedAt: timestamp("claimed_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});

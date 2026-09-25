@@ -1,17 +1,96 @@
 "use server";
 
-import { asc, and, eq, lte } from "drizzle-orm";
+import { asc, and, desc, eq, isNull, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { requireCompanyMembership } from "@/app/lib/authz";
+import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
+import type { QrDisplay } from "@/app/lib/qr-display";
 import { db } from "@/db";
-import { badge, company, event } from "@/db/schema";
+import { badge, company, event, qrDisplay } from "@/db/schema";
+
+export type { QrDisplay } from "@/app/lib/qr-display";
 
 /** Se autoprotege: hace falta sesión y membresía de esa empresa. */
 export async function getMyCompany(companyId: string) {
   await requireCompanyMembership(companyId);
   const [row] = await db.select().from(company).where(eq(company.id, companyId));
   return row;
+}
+
+/** QR del check-in del evento, o de un badge puntual si se pasa `badgeId`. Rota sola: no persiste nada. */
+export async function getQrDisplay(companyId: string, eventId: string, badgeId?: string): Promise<QrDisplay | null> {
+  await requireCompanyMembership(companyId);
+  const now = new Date();
+  const [currentEvent] = await db.select().from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+  if (!currentEvent) return null;
+  const [currentBadge] = badgeId ? await db.select().from(badge).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))) : [undefined];
+  if (badgeId && !currentBadge) return null;
+  return buildQrDisplay(currentEvent, currentBadge, now);
+}
+
+export type QrDisplayLinkState = { url: string; qrSvg: string } | { error: string } | null;
+
+/** Crea un link de un solo uso para emparejar una pantalla con el QR rotativo de un evento (o un badge puntual). */
+export async function createQrDisplayLink(prev: QrDisplayLinkState, formData: FormData): Promise<QrDisplayLinkState> {
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const badgeField = String(formData.get("badge") ?? "").trim();
+  await requireCompanyMembership(companyId);
+  const now = new Date();
+  const [currentEvent] = await db.select().from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+  if (!currentEvent || currentEvent.status !== "ACTIVE" || currentEvent.endsAt <= now) {
+    return { error: "Solo se pueden crear pantallas para eventos activos." };
+  }
+  let badgeId: string | null = null;
+  if (badgeField) {
+    const [currentBadge] = await db.select({ id: badge.id }).from(badge).where(and(eq(badge.id, badgeField), eq(badge.eventId, eventId)));
+    if (!currentBadge) return { error: "El badge no existe." };
+    badgeId = currentBadge.id;
+  }
+  const betterAuthUrl = process.env.BETTER_AUTH_URL;
+  if (!betterAuthUrl) throw new Error("BETTER_AUTH_URL is not set");
+  const { token, hash } = createDisplayToken();
+  await db.insert(qrDisplay).values({ id: randomUUID(), eventId, badgeId, linkTokenHash: hash, expiresAt: currentEvent.endsAt });
+  const url = `${betterAuthUrl}/display/claim/${token}`;
+  return { url, qrSvg: await renderQrSvg(url) };
+}
+
+export type QrDisplayRow = { id: string; status: "pending" | "paired" | "revoked" | "expired"; createdAt: Date; claimedAt: Date | null };
+
+function qrDisplayStatus(row: { revokedAt: Date | null; expiresAt: Date; claimedAt: Date | null }, now: Date): QrDisplayRow["status"] {
+  if (row.revokedAt) return "revoked";
+  if (row.expiresAt <= now) return "expired";
+  if (row.claimedAt) return "paired";
+  return "pending";
+}
+
+/** `badgeId` sin definir busca las pantallas de check-in (badge_id IS NULL). */
+export async function listQrDisplays(companyId: string, eventId: string, badgeId?: string): Promise<QrDisplayRow[]> {
+  await requireCompanyMembership(companyId);
+  const [currentEvent] = await db.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+  if (!currentEvent) return [];
+  const now = new Date();
+  const rows = await db
+    .select({ id: qrDisplay.id, createdAt: qrDisplay.createdAt, claimedAt: qrDisplay.claimedAt, revokedAt: qrDisplay.revokedAt, expiresAt: qrDisplay.expiresAt })
+    .from(qrDisplay)
+    .where(and(eq(qrDisplay.eventId, eventId), badgeId ? eq(qrDisplay.badgeId, badgeId) : isNull(qrDisplay.badgeId)))
+    .orderBy(desc(qrDisplay.createdAt));
+  return rows.map((row) => ({ id: row.id, createdAt: row.createdAt, claimedAt: row.claimedAt, status: qrDisplayStatus(row, now) }));
+}
+
+/** Revoca una pantalla emparejada o pendiente; la tablet lo ve en su próximo refresco. */
+export async function revokeQrDisplay(formData: FormData): Promise<void> {
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const displayId = String(formData.get("displayId") ?? "");
+  const badgeField = String(formData.get("badge") ?? "").trim();
+  await requireCompanyMembership(companyId);
+  const [currentEvent] = await db.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+  if (currentEvent) {
+    await db.update(qrDisplay).set({ revokedAt: new Date() }).where(and(eq(qrDisplay.id, displayId), eq(qrDisplay.eventId, eventId), isNull(qrDisplay.revokedAt)));
+  }
+  redirect(`/company/${companyId}/events/${eventId}/qr${badgeField ? `?badge=${badgeField}` : ""}`);
 }
 
 function eventInput(formData: FormData) {
