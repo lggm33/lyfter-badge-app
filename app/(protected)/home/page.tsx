@@ -1,13 +1,15 @@
 import { requireSession } from "@/app/lib/authz";
-import { listMyCompanies } from "./actions";
+import { listMyCollection, listMyCompanies } from "./actions";
+import { MyCollection } from "./my-collection";
 import { MyCompanies } from "./my-companies";
 
 export default async function HomePage() {
   const session = await requireSession();
   const companies = await listMyCompanies();
+  const collection = await listMyCollection();
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-start justify-center gap-6 px-6">
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-start gap-6 px-6 py-16">
       <p className="inline-flex rounded-full bg-[#add195]/40 px-4 py-2 text-sm font-bold text-slate-700">
         Sesión activa
       </p>
@@ -15,9 +17,9 @@ export default async function HomePage() {
         Hola, {session.user.name} 👋
       </h1>
       <p className="text-lg text-slate-600">
-        Todavía no hay eventos ni badges cargados — esto es tu punto de
-        partida.
+        Tus badges y tu XP están acá. El total sale de los movimientos del ledger.
       </p>
+      <MyCollection badges={collection.badges} totalXp={collection.totalXp} />
       <MyCompanies companies={companies} />
     </main>
   );

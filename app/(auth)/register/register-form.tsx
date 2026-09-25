@@ -6,7 +6,7 @@ import { authClient } from "@/app/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 
-export function RegisterForm() {
+export function RegisterForm({ redirectTo = "/home" }: { redirectTo?: string }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -32,7 +32,7 @@ export function RegisterForm() {
       return;
     }
 
-    router.push("/home");
+    router.push(redirectTo);
     router.refresh();
   }
 

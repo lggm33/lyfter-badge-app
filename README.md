@@ -47,13 +47,14 @@ el servidor; los grupos de rutas solo organizan la navegación.
 
 | Experiencia | Ruta base | Acceso |
 | --- | --- | --- |
-| Participante | `/home`, `/scan`, `/badges`, `/leaderboard` | Usuario autenticado |
+| Participante | `/home`, `/badges`, `/leaderboard` | Usuario autenticado |
+| Check-in y canje | `/scan` | Público. Sin sesión vuelve a `/login?next=/scan?t=…` y retoma el token. El canje exige check-in y suma XP una sola vez. |
 | Administrador de empresa | `/company/[companyId]` | Usuario autenticado con membresía de esa empresa. Un `SUPER_ADMIN` sin membresía no entra. |
 | Login de Super Admin | `/admin/login` | Público; solo permite ingresar a usuarios `SUPER_ADMIN` |
 | Super administrador | `/admin`, `/admin/companies`, `/admin/companies/[companyId]`, `/admin/users`, `/admin/audit` | Usuario autenticado con rol `SUPER_ADMIN` |
 
 Actualmente están disponibles `/home` (con acceso a las empresas del usuario si
-tiene membresías), `/admin/login`, `/admin/companies`,
+tiene membresías), `/scan` (check-in por QR), `/admin/login`, `/admin/companies`,
 `/admin/companies/[companyId]` (asignar y quitar administradores de empresa) y
 `/company/[companyId]`. Las demás rutas se agregarán junto con sus slices
 funcionales.

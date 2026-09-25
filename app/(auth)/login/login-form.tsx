@@ -6,7 +6,7 @@ import { authClient } from "@/app/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 
-export function LoginForm() {
+export function LoginForm({ redirectTo = "/home" }: { redirectTo?: string }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,7 +30,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push("/home");
+    router.push(redirectTo);
     router.refresh();
   }
 

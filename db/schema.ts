@@ -71,6 +71,56 @@ export const badge = pgTable(
   (table) => [uniqueIndex("badge_event_name_idx").on(table.eventId, table.name)],
 );
 
+export const eventMembership = pgTable(
+  "event_membership",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    checkedInAt: timestamp("checked_in_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("event_membership_user_event_idx").on(table.userId, table.eventId),
+  ],
+);
+
+export const badgeRedemption = pgTable(
+  "badge_redemption",
+  {
+    id: text("id").primaryKey(),
+    badgeId: text("badge_id")
+      .notNull()
+      .references(() => badge.id, { onDelete: "cascade" }),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("badge_redemption_user_badge_idx").on(table.userId, table.badgeId),
+  ],
+);
+
+export const xpLedger = pgTable("xp_ledger", {
+  id: text("id").primaryKey(),
+  redemptionId: text("redemption_id")
+    .notNull()
+    .unique()
+    .references(() => badgeRedemption.id, { onDelete: "cascade" }),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  amount: integer("amount").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const qrDisplay = pgTable("qr_display", {
   id: text("id").primaryKey(),
   eventId: text("event_id")
