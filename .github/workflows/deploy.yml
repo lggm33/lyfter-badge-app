@@ -9,6 +9,10 @@ concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: false # nunca cortar una migración o un deploy a la mitad
 
+# Explícito para no depender del default del repo.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -28,9 +32,10 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3000
       QR_SECRET: ci-only-qr-secret
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6 # toma la versión de packageManager
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Actions fijadas por SHA: un tag se puede mover, un commit no.
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0, toma la versión de packageManager
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24 # igual que el runtime del proyecto en Vercel
           cache: pnpm
@@ -48,9 +53,9 @@ jobs:
       VERCEL_ORG_ID: team_hbEFCMIIaBh3aiXnLdqQ9j4A
       VERCEL_PROJECT_ID: prj_6MRbgeqOD0iEZGri1MrEBZAJJNav
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
           cache: pnpm
@@ -62,5 +67,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
       # Build remoto en Vercel: las env vars son sensitive y no se pueden bajar con vercel pull.
+      # Token por env (la CLI lo lee sola): nunca en argv ni interpolado en el script.
       - name: Deploy to Vercel
-        run: pnpm dlx vercel@59 deploy --prod --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: pnpm dlx vercel@59.26.0 deploy --prod --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
