@@ -28,9 +28,9 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3000
       QR_SECRET: ci-only-qr-secret
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4 # toma la versión de packageManager
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6 # toma la versión de packageManager
+      - uses: actions/setup-node@v7
         with:
           node-version: 24 # igual que el runtime del proyecto en Vercel
           cache: pnpm
@@ -48,9 +48,9 @@ jobs:
       VERCEL_ORG_ID: team_hbEFCMIIaBh3aiXnLdqQ9j4A
       VERCEL_PROJECT_ID: prj_6MRbgeqOD0iEZGri1MrEBZAJJNav
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
