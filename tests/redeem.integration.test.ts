@@ -83,6 +83,7 @@ describe("badge redemption", () => {
     expect(first).toEqual({
       ok: true,
       outcome: "granted",
+      badgeId,
       badgeName: "Stand QR",
       eventName: "Demo Day",
       xp: 250,

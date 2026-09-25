@@ -67,6 +67,7 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       return {
         ok: true,
         outcome: "already_redeemed",
+        badgeId: row.badgeId,
         badgeName: row.badgeName,
         eventName: row.eventName,
         xp: row.xp,
@@ -84,6 +85,7 @@ export async function redeemBadge(token: string, userId: string | null): Promise
     return {
       ok: true,
       outcome: "granted",
+      badgeId: row.badgeId,
       badgeName: row.badgeName,
       eventName: row.eventName,
       xp: row.xp,

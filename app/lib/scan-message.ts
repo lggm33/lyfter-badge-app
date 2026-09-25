@@ -3,6 +3,7 @@ import { checkInMessage, type CheckInResult } from "@/app/lib/check-in-message";
 export type RedeemSuccess = {
   ok: true;
   outcome: "granted" | "already_redeemed";
+  badgeId: string;
   badgeName: string;
   eventName: string;
   xp: number;
@@ -23,7 +24,7 @@ export function destinationAfterScan(result: ScanResult) {
   if (result.flow === "checkin") {
     return `/home?notice=checkin&name=${encodeURIComponent(result.eventName)}`;
   }
-  return `/home?notice=badge&name=${encodeURIComponent(result.badgeName)}&xp=${result.xp}`;
+  return `/badge/${result.badgeId}`;
 }
 
 export function scanMessage(result: ScanResult) {

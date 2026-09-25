@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import { listMyCollection } from "@/app/(protected)/home/actions";
+import { getMyBadge, listMyCollection } from "@/app/(protected)/home/actions";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { badge, badgeRedemption, company, event, xpLedger } from "@/db/schema";
@@ -91,17 +91,27 @@ describe("participant collection", () => {
     expect(collection.badges).toEqual([
       expect.objectContaining({
         redemptionId,
+        badgeId,
         name: "Stand QR",
         icon: "★",
         eventName: "Demo Day",
         xp: 40,
       }),
     ]);
+
+    headersMock.mockResolvedValueOnce(new Headers({ cookie: ownerCookie }));
+    await expect(getMyBadge(badgeId)).resolves.toMatchObject({
+      name: "Stand QR",
+      xp: 40,
+    });
   });
 
   it("no muestra la colección de otra persona", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie: otherCookie }));
 
     await expect(listMyCollection()).resolves.toEqual({ totalXp: 0, badges: [] });
+
+    headersMock.mockResolvedValueOnce(new Headers({ cookie: otherCookie }));
+    await expect(getMyBadge(badgeId)).resolves.toBeNull();
   });
 });

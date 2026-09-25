@@ -48,7 +48,8 @@ el servidor; los grupos de rutas solo organizan la navegación.
 | Experiencia | Ruta base | Acceso |
 | --- | --- | --- |
 | Participante | `/home`, `/badges`, `/leaderboard` | Usuario autenticado |
-| Check-in y canje | `/scan` | Público. Sin sesión vuelve a `/login?next=/scan?t=…` y retoma el token. El canje exige check-in y suma XP una sola vez. |
+| Check-in y canje | `/scan` | Público. Sin sesión pregunta si ya hay cuenta. El canje abre `/badge/[badgeId]`. |
+| Badge obtenido | `/badge/[badgeId]` | Usuario autenticado que canjeó ese badge. |
 | Administrador de empresa | `/company/[companyId]` | Usuario autenticado con membresía de esa empresa. Un `SUPER_ADMIN` sin membresía no entra. |
 | Login de Super Admin | `/admin/login` | Público; solo permite ingresar a usuarios `SUPER_ADMIN` |
 | Super administrador | `/admin`, `/admin/companies`, `/admin/companies/[companyId]`, `/admin/users`, `/admin/audit` | Usuario autenticado con rol `SUPER_ADMIN` |

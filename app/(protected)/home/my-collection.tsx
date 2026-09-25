@@ -1,5 +1,8 @@
+import Link from "next/link";
+
 type CollectedBadge = {
   redemptionId: string;
+  badgeId: string;
   name: string;
   icon: string | null;
   eventName: string;
@@ -23,14 +26,16 @@ export function MyCollection({
       ) : (
         <ul className="grid w-full gap-3 sm:grid-cols-2">
           {badges.map((item) => (
-            <li className="rounded-3xl border border-slate-200 bg-white p-4" key={item.redemptionId}>
-              <p className="font-black text-slate-800">
-                {item.icon ? `${item.icon} ` : ""}
-                {item.name}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {item.eventName} · {item.xp} XP
-              </p>
+            <li key={item.redemptionId}>
+              <Link className="block rounded-3xl border border-slate-200 bg-white p-4" href={`/badge/${item.badgeId}`}>
+                <p className="font-black text-slate-800">
+                  {item.icon ? `${item.icon} ` : ""}
+                  {item.name}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {item.eventName} · {item.xp} XP
+                </p>
+              </Link>
             </li>
           ))}
         </ul>

@@ -1,6 +1,6 @@
 "use server";
 
-import { asc, desc, eq, sum } from "drizzle-orm";
+import { and, asc, desc, eq, sum } from "drizzle-orm";
 import { requireSession } from "@/app/lib/authz";
 import { db } from "@/db";
 import { badge, badgeRedemption, company, companyMember, event, xpLedger } from "@/db/schema";
@@ -31,6 +31,7 @@ export async function listMyCollection() {
   const badges = await db
     .select({
       redemptionId: badgeRedemption.id,
+      badgeId: badge.id,
       name: badge.name,
       icon: badge.icon,
       eventName: event.name,
@@ -48,4 +49,23 @@ export async function listMyCollection() {
     totalXp: Number(totalRow?.total ?? 0),
     badges,
   };
+}
+
+export async function getMyBadge(badgeId: string) {
+  const session = await requireSession();
+  const [row] = await db
+    .select({
+      badgeId: badge.id,
+      name: badge.name,
+      icon: badge.icon,
+      eventName: event.name,
+      xp: xpLedger.amount,
+    })
+    .from(badgeRedemption)
+    .innerJoin(badge, eq(badgeRedemption.badgeId, badge.id))
+    .innerJoin(event, eq(badgeRedemption.eventId, event.id))
+    .innerJoin(xpLedger, eq(xpLedger.redemptionId, badgeRedemption.id))
+    .where(and(eq(badgeRedemption.userId, session.user.id), eq(badge.id, badgeId)));
+
+  return row ?? null;
 }
