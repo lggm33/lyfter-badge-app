@@ -24,7 +24,8 @@ export function destinationAfterScan(result: ScanResult) {
   if (result.flow === "checkin") {
     return `/home?notice=checkin&name=${encodeURIComponent(result.eventName)}`;
   }
-  return `/badge/${result.badgeId}`;
+  const fresh = result.outcome === "granted" ? "?fresh=1" : "";
+  return `/badge/${result.badgeId}${fresh}`;
 }
 
 export function scanMessage(result: ScanResult) {
