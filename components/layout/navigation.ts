@@ -13,5 +13,8 @@ export function getNavigationItems(context: ShellContext): NavigationItem[] {
     ];
   }
   if (context.kind === "admin") return [{ label: "Empresas", href: "/admin/companies" }];
-  return [{ label: "Inicio", href: "/home" }];
+  return [
+    { label: "Inicio", href: "/home" },
+    { label: "Badges", href: "/badges" },
+  ];
 }

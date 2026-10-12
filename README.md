@@ -55,7 +55,8 @@ el servidor; los grupos de rutas solo organizan la navegación.
 | Super administrador | `/admin`, `/admin/companies`, `/admin/companies/[companyId]`, `/admin/users`, `/admin/audit` | Usuario autenticado con rol `SUPER_ADMIN` |
 
 Actualmente están disponibles `/home` (con acceso a las empresas del usuario si
-tiene membresías), `/scan` (check-in por QR), `/admin/login`, `/admin/companies`,
+tiene membresías), `/badges` (historial por evento), `/badge/[badgeId]`,
+`/scan` (check-in por QR), `/admin/login`, `/admin/companies`,
 `/admin/companies/[companyId]` (asignar y quitar administradores de empresa) y
 `/company/[companyId]`. Las demás rutas se agregarán junto con sus slices
 funcionales.

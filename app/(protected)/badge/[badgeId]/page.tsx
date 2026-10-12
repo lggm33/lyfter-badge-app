@@ -30,9 +30,9 @@ export default async function BadgePage({
       <p className="text-sm text-slate-500">{earned.eventName}</p>
       <Link
         className="rounded-full bg-slate-800 px-7 py-3 text-center font-bold text-white"
-        href="/home"
+        href="/badges"
       >
-        Ir al inicio
+        Ver mis badges
       </Link>
     </main>
   );

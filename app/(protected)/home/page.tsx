@@ -1,6 +1,6 @@
+import Link from "next/link";
 import { requireSession } from "@/app/lib/authz";
 import { listMyCollection, listMyCompanies } from "./actions";
-import { MyCollection } from "./my-collection";
 import { MyCompanies } from "./my-companies";
 
 export default async function HomePage({
@@ -27,9 +27,11 @@ export default async function HomePage({
         </p>
       )}
       <p className="text-lg text-slate-600">
-        Tus badges y tu XP están acá. El total sale de los movimientos del ledger.
+        Tu historial agrupa los badges por evento. El total sale de los movimientos del ledger.
       </p>
-      <MyCollection badges={collection.badges} totalXp={collection.totalXp} />
+      <Link className="text-3xl font-black tracking-tight text-slate-800" href="/badges">
+        {collection.totalXp} XP
+      </Link>
       <MyCompanies companies={companies} />
     </main>
   );

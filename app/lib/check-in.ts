@@ -3,16 +3,11 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { event, eventMembership } from "@/db/schema";
 import { verifyQrToken } from "@/app/lib/qr-token";
+import { extractScanToken } from "@/app/lib/scan-token";
 import type { CheckInResult } from "@/app/lib/check-in-message";
 
 export type { CheckInFailure, CheckInResult, CheckInSuccess } from "@/app/lib/check-in-message";
-
-/** Accepts a raw token or a /scan URL that carries ?t=. */
-export function extractScanToken(input: string) {
-  const trimmed = input.trim();
-  const fromQuery = tokenFromScanUrl(trimmed);
-  return fromQuery ?? trimmed;
-}
+export { extractScanToken } from "@/app/lib/scan-token";
 
 /**
  * Records event attendance for the signed-in user.
@@ -60,22 +55,4 @@ export async function checkIn(token: string, userId: string | null): Promise<Che
     eventId: openEvent.id,
     eventName: openEvent.name,
   };
-}
-
-function tokenFromScanUrl(value: string) {
-  if (value.startsWith("/scan?") || value.startsWith("scan?")) {
-    const query = value.slice(value.indexOf("?") + 1);
-    return new URLSearchParams(query).get("t");
-  }
-
-  try {
-    const url = new URL(value);
-    if (url.pathname === "/scan" || url.pathname.endsWith("/scan")) {
-      return url.searchParams.get("t");
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
 }
