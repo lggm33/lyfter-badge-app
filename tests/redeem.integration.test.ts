@@ -93,13 +93,31 @@ describe("badge redemption", () => {
     expect(forThisBadge).toEqual([expect.objectContaining({ amount: 250 })]);
   });
 
-  it("no canjea sin check-in y no escribe XP", async () => {
-    const eventId = await openEvent();
-    const badgeId = await addBadge(eventId);
+  it("anota el evento del badge aunque la persona ya esté en otro", async () => {
+    const eventA = await openEvent();
+    const eventB = await openEvent();
+    const badgeId = await addBadge(eventB, 40);
+    await checkIn(eventA);
     const token = signQrToken({ kind: "badge", subjectId: badgeId });
 
-    await expect(redeemBadge(token, userId)).resolves.toEqual({ ok: false, reason: "not_checked_in" });
-    await expect(db.select().from(badgeRedemption).where(eq(badgeRedemption.badgeId, badgeId))).resolves.toHaveLength(0);
+    const result = await redeemBadge(token, userId);
+    const attendance = await db
+      .select()
+      .from(eventMembership)
+      .where(eq(eventMembership.eventId, eventB));
+    const mine = attendance.filter((row) => row.userId === userId);
+    const redemptions = await db.select().from(badgeRedemption).where(eq(badgeRedemption.badgeId, badgeId));
+
+    expect(result).toEqual({
+      ok: true,
+      outcome: "granted",
+      badgeId,
+      badgeName: "Stand QR",
+      eventName: "Demo Day",
+      xp: 40,
+    });
+    expect(mine).toHaveLength(1);
+    expect(redemptions).toHaveLength(1);
   });
 
   it("rechaza un QR vencido sin escribir", async () => {

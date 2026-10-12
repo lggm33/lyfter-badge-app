@@ -11,7 +11,7 @@ export type RedeemSuccess = {
 
 export type RedeemFailure = {
   ok: false;
-  reason: "invalid" | "expired" | "not_checked_in" | "event_closed" | "unauthenticated";
+  reason: "invalid" | "expired" | "event_closed" | "unauthenticated";
 };
 
 export type RedeemResult = RedeemSuccess | RedeemFailure;
@@ -37,9 +37,6 @@ export function scanMessage(result: ScanResult) {
   }
   if (result.ok) {
     return `Ya tenías ${result.badgeName}.`;
-  }
-  if (result.reason === "not_checked_in") {
-    return "Primero tenés que hacer check-in en el evento.";
   }
   if (result.reason === "expired") {
     return "El QR venció. Escaneá el de la pantalla de nuevo.";

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { badge, badgeRedemption, event, eventMembership, xpLedger } from "@/db/schema";
 import { extractScanToken } from "@/app/lib/check-in";
@@ -7,8 +7,10 @@ import type { RedeemResult } from "@/app/lib/scan-message";
 import { verifyQrToken } from "@/app/lib/qr-token";
 
 /**
- * Grants a badge and its XP once per user.
- * The user id comes from the session. A repeated token does not add a second ledger row.
+ * Grants a badge and its XP once per signed-in user.
+ * The session is the check-in: the badge's event gets a membership in the same
+ * transaction, so a welcome scan is not required. A repeated token does not
+ * add a second ledger row.
  */
 export async function redeemBadge(token: string, userId: string | null): Promise<RedeemResult> {
   const verified = verifyQrToken(extractScanToken(token));
@@ -41,14 +43,16 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       return { ok: false, reason: "event_closed" };
     }
 
-    const [membership] = await tx
-      .select({ id: eventMembership.id })
-      .from(eventMembership)
-      .where(and(eq(eventMembership.eventId, row.eventId), eq(eventMembership.userId, userId)));
-
-    if (!membership) {
-      return { ok: false, reason: "not_checked_in" };
-    }
+    await tx
+      .insert(eventMembership)
+      .values({
+        id: randomUUID(),
+        eventId: row.eventId,
+        userId,
+      })
+      .onConflictDoNothing({
+        target: [eventMembership.userId, eventMembership.eventId],
+      });
 
     const inserted = await tx
       .insert(badgeRedemption)
