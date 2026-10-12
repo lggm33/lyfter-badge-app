@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { auth } from "@/app/lib/auth";
-import { LogoutButton } from "@/components/logout-button";
+import { LandingNav } from "@/app/landing-nav";
 
 const highlights = [
   ["01", "Escaneá", "Registrá tu llegada y descubrí cada experiencia del evento."],
@@ -14,33 +13,7 @@ export default async function Home() {
 
   return (
     <main className="min-h-screen overflow-hidden">
-      <nav className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 lg:px-8">
-        <Link href="/" className="text-xl font-black tracking-tight text-slate-800">
-          lyfter<span className="text-[#e88f95]">.</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          <a href="#como-funciona" className="rounded-full border border-slate-800 px-5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-800 hover:text-white">
-            Cómo funciona
-          </a>
-          {session ? (
-            <>
-              <Link href="/home" className="rounded-full bg-slate-800 px-5 py-2 text-sm font-bold text-white transition hover:bg-slate-700">
-                Mi cuenta
-              </Link>
-              <LogoutButton />
-            </>
-          ) : (
-            <>
-              <Link href="/login" className="rounded-full border border-slate-800 px-5 py-2 text-sm font-bold text-slate-800 transition hover:bg-slate-800 hover:text-white">
-                Iniciar sesión
-              </Link>
-              <Link href="/register" className="rounded-full bg-slate-800 px-5 py-2 text-sm font-bold text-white transition hover:bg-slate-700">
-                Registrarse
-              </Link>
-            </>
-          )}
-        </div>
-      </nav>
+      <LandingNav signedIn={Boolean(session)} />
       <section className="mx-auto grid w-full max-w-6xl gap-12 px-6 pb-20 pt-12 lg:grid-cols-[1.1fr_.9fr] lg:items-center lg:px-8 lg:pb-28 lg:pt-20">
         <div>
           <p className="mb-6 inline-flex rounded-full bg-[#add195]/40 px-4 py-2 text-sm font-bold text-slate-700">
