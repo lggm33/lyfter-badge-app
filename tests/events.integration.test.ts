@@ -25,6 +25,13 @@ function form(values: Record<string, string>) {
   return result;
 }
 
+function hoursFromNow(hours: number) {
+  const date = new Date(Date.now() + hours * 60 * 60 * 1000);
+  const parts = [date.getFullYear(), date.getMonth() + 1, date.getDate(), date.getHours(), date.getMinutes()]
+    .map((value) => String(value).padStart(2, "0"));
+  return `${parts[0]}-${parts[1]}-${parts[2]}T${parts[3]}:${parts[4]}`;
+}
+
 describe("event actions integration", () => {
   beforeAll(async () => {
     requireTestEnv();
@@ -44,16 +51,16 @@ describe("event actions integration", () => {
 
   it("creates and lists an event for a company member", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Demo", slug: "demo", startsAt: "2026-10-01T10:00", endsAt: "2026-10-01T18:00" }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
+    await expect(createEvent(form({ companyId, name: "Demo", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(listMyCompanyEvents(companyId)).resolves.toMatchObject([{ name: "Demo", status: "DRAFT" }]);
   });
 
   it("rejects invalid date ranges and duplicate slugs", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: "2026-10-02T18:00", endsAt: "2026-10-02T10:00" }))).resolves.toEqual({ error: "Las fechas del evento no son válidas." });
+    await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: hoursFromNow(72), endsAt: hoursFromNow(70) }))).resolves.toEqual({ error: "Las fechas del evento no son válidas." });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: "2026-10-01T10:00", endsAt: "2026-10-01T18:00" }))).resolves.toEqual({ error: "Ya existe un evento con ese slug en esta empresa." });
+    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toEqual({ error: "Ya existe un evento con ese slug en esta empresa." });
   });
 
   it("rejects events that start in the past", async () => {
