@@ -122,23 +122,27 @@ export async function listMyCompanyEvents(companyId: string) {
   return rows.map((row) => ({ ...row, canActivate: row.status === "DRAFT" && now >= row.startsAt.getTime() - 24 * 60 * 60 * 1000 && now < row.endsAt.getTime() }));
 }
 
-type EventFormState = { error?: string } | null;
+const eventFields = ["name", "slug", "description", "location", "startsAt", "endsAt"] as const;
+type EventFormValues = Partial<Record<(typeof eventFields)[number], string>>;
+type EventFormState = { error?: string; values?: EventFormValues } | null;
 
 export async function createEvent(previousState: EventFormState | FormData, maybeFormData?: FormData): Promise<EventFormState> {
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   await requireCompanyMembership(companyId);
+  // React resets the form after the action; echoing the input keeps it on error.
+  const values = Object.fromEntries(eventFields.map((field) => [field, String(formData.get(field) ?? "")]));
   let input;
   try {
     input = eventInput(formData);
   } catch (error) {
-    return { error: error instanceof Error ? error.message : "Los datos del evento no son válidos." };
+    return { error: error instanceof Error ? error.message : "Los datos del evento no son válidos.", values };
   }
   try {
     await db.insert(event).values({ id: randomUUID(), companyId, ...input });
   } catch (error) {
     const cause = error as { code?: string; cause?: { code?: string } };
-    if (cause.code === "23505" || cause.cause?.code === "23505") return { error: "Ya existe un evento con ese slug en esta empresa." };
+    if (cause.code === "23505" || cause.cause?.code === "23505") return { error: "Ya existe un evento con ese slug en esta empresa.", values };
     throw error;
   }
   redirect(`/company/${companyId}`);

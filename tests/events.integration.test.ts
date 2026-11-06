@@ -58,14 +58,14 @@ describe("event actions integration", () => {
 
   it("rejects invalid date ranges and duplicate slugs", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: hoursFromNow(72), endsAt: hoursFromNow(70) }))).resolves.toEqual({ error: "Las fechas del evento no son válidas." });
+    await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: hoursFromNow(72), endsAt: hoursFromNow(70) }))).resolves.toMatchObject({ error: "Las fechas del evento no son válidas." });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toEqual({ error: "Ya existe un evento con ese slug en esta empresa." });
+    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toMatchObject({ error: "Ya existe un evento con ese slug en esta empresa.", values: { name: "Duplicate", slug: "demo" } });
   });
 
   it("rejects events that start in the past", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Past", slug: "past", startsAt: "2020-01-01T10:00", endsAt: "2020-01-01T18:00" }))).resolves.toEqual({ error: "El evento no puede comenzar en el pasado." });
+    await expect(createEvent(form({ companyId, name: "Past", slug: "past", startsAt: "2020-01-01T10:00", endsAt: "2020-01-01T18:00" }))).resolves.toMatchObject({ error: "El evento no puede comenzar en el pasado.", values: { name: "Past", startsAt: "2020-01-01T10:00" } });
   });
 
   it("only activates during the 24 hours before the event", async () => {
