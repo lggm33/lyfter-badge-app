@@ -10,9 +10,11 @@ import { postAuth, requireTestEnv, uniqueEmail } from "./helpers";
 
 const password = "integration-test-password";
 const email = uniqueEmail("redeem");
+const eventEmail = uniqueEmail("event-membership");
 const levelEmail = uniqueEmail("level-up");
 const companyId = randomUUID();
 let userId = "";
+let eventUserId = "";
 let levelUserId = "";
 
 function shift(windows: number) {
@@ -62,6 +64,9 @@ describe("badge redemption", () => {
     const signUp = await postAuth("/sign-up/email", { name: "Redeemer", email, password });
     expect(signUp.status).toBe(200);
     userId = (await signUp.json()).user.id;
+    const eventSignUp = await postAuth("/sign-up/email", { name: "Event Redeemer", email: eventEmail, password });
+    expect(eventSignUp.status).toBe(200);
+    eventUserId = (await eventSignUp.json()).user.id;
     const levelSignUp = await postAuth("/sign-up/email", { name: "Level Up", email: levelEmail, password });
     expect(levelSignUp.status).toBe(200);
     levelUserId = (await levelSignUp.json()).user.id;
@@ -71,6 +76,7 @@ describe("badge redemption", () => {
   afterAll(async () => {
     await db.delete(company).where(eq(company.id, companyId));
     await db.delete(user).where(eq(user.email, email));
+    await db.delete(user).where(eq(user.email, eventEmail));
     await db.delete(user).where(eq(user.email, levelEmail));
   });
 
@@ -108,12 +114,12 @@ describe("badge redemption", () => {
     await checkIn(eventA);
     const token = signQrToken({ kind: "badge", subjectId: badgeId });
 
-    const result = await redeemBadge(token, userId);
+    const result = await redeemBadge(token, eventUserId);
     const attendance = await db
       .select()
       .from(eventMembership)
       .where(eq(eventMembership.eventId, eventB));
-    const mine = attendance.filter((row) => row.userId === userId);
+    const mine = attendance.filter((row) => row.userId === eventUserId);
     const redemptions = await db.select().from(badgeRedemption).where(eq(badgeRedemption.badgeId, badgeId));
 
     expect(result).toEqual({
