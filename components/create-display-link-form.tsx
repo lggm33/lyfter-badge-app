@@ -13,7 +13,7 @@ export function CreateDisplayLinkForm({ companyId, eventId, badgeId }: { company
         <input type="hidden" name="eventId" value={eventId} />
         {badgeId && <input type="hidden" name="badge" value={badgeId} />}
         <button
-          className="justify-self-start rounded-full bg-slate-800 px-4 py-2 font-bold text-white disabled:opacity-50"
+          className="justify-self-center rounded-full bg-slate-800 px-4 py-2 font-bold text-white disabled:opacity-50"
           disabled={pending}
           type="submit"
         >
