@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { createQrDisplayLink } from "@/app/(protected)/company/[companyId]/actions";
 
 export function CreateDisplayLinkForm({ companyId, eventId, badgeId }: { companyId: string; eventId: string; badgeId?: string }) {
@@ -34,8 +34,34 @@ export function CreateDisplayLinkForm({ companyId, eventId, badgeId }: { company
             dangerouslySetInnerHTML={{ __html: state.qrSvg }}
           />
           <code className="break-all rounded-lg bg-white px-3 py-2 text-xs text-slate-600">{state.url}</code>
+          <CopyButton key={state.url} text={state.url} />
         </div>
       )}
     </div>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const [status, setStatus] = useState<"idle" | "copied" | "failed">("idle");
+
+  async function copy() {
+    try {
+      // Missing outside a secure context (plain http on a LAN IP): fall back to copying by hand.
+      await navigator.clipboard.writeText(text);
+      setStatus("copied");
+    } catch {
+      setStatus("failed");
+    }
+  }
+
+  return (
+    <button
+      aria-live="polite"
+      className="justify-self-center rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
+      onClick={copy}
+      type="button"
+    >
+      {status === "copied" ? "¡Copiado!" : status === "failed" ? "No se pudo copiar, seleccionalo a mano" : "Copiar link"}
+    </button>
   );
 }
