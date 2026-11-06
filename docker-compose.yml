@@ -1,0 +1,20 @@
+# Postgres local para dev (lyfter_dev) y tests de integración (lyfter_test).
+# Misma versión que CI. Puerto 5433 para no chocar con un Postgres nativo en 5432.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lyfter_dev
+    ports: ["5433:5432"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Solo corre la primera vez, con el volumen vacío.
+      - ./db/docker-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: pg_isready -U postgres
+      interval: 2s
+      retries: 15
+
+volumes:
+  pgdata:

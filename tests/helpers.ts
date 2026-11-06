@@ -31,7 +31,7 @@ export async function postAuth(
 export function requireTestEnv() {
   for (const key of ["DATABASE_URL", "BETTER_AUTH_SECRET"]) {
     if (!process.env[key]) {
-      throw new Error(`${key} must be set to run the Railway integration test`);
+      throw new Error(`${key} must be set to run the integration tests`);
     }
   }
 }
