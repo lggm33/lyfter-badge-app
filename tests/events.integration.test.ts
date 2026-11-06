@@ -74,6 +74,9 @@ describe("event actions integration", () => {
     const eventId = randomUUID();
     await db.insert(event).values({ id: eventId, companyId, name: "Soon", slug: "soon", startsAt: new Date(Date.now() + 60 * 60 * 1000), endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000) });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(activateEvent(form({ companyId, eventId }))).rejects.toThrow("Agregá al menos un badge antes de activar el evento.");
+    await db.insert(badge).values({ id: randomUUID(), eventId, name: "Entry", type: "CONTENT", rarity: "COMMON", xp: 50 });
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(activateEvent(form({ companyId, eventId }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     await expect(db.select({ status: event.status }).from(event).where(eq(event.id, eventId))).resolves.toMatchObject([{ status: "ACTIVE" }]);
   });
@@ -98,5 +101,23 @@ describe("event actions integration", () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(deleteBadge(form({ companyId, eventId, badgeId: created.id }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     await expect(db.select().from(badge).where(eq(badge.id, created.id))).resolves.toHaveLength(0);
+  });
+
+  it("adds only optional badges to active events and none to finished ones", async () => {
+    const eventId = randomUUID();
+    await db.insert(event).values({ id: eventId, companyId, name: "Live", slug: "live", startsAt: new Date(Date.now() - 60 * 60 * 1000), endsAt: new Date(Date.now() + 60 * 60 * 1000), status: "ACTIVE" });
+    const fields = { companyId, eventId, type: "STAND", rarity: "COMMON", xp: "50" };
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createBadge(form({ ...fields, name: "Required", required: "on" }))).rejects.toThrow("En un evento activo solo se pueden agregar badges opcionales.");
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createBadge(form({ ...fields, name: "Surprise" }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
+    await expect(db.select({ name: badge.name, required: badge.required }).from(badge).where(eq(badge.eventId, eventId))).resolves.toEqual([{ name: "Surprise", required: false }]);
+    const [surprise] = await db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId));
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(deleteBadge(form({ companyId, eventId, badgeId: surprise.id }))).rejects.toThrow("Solo se pueden modificar badges de eventos en borrador.");
+
+    await db.update(event).set({ status: "FINISHED" }).where(eq(event.id, eventId));
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createBadge(form({ ...fields, name: "Late" }))).rejects.toThrow("No se pueden agregar badges a un evento finalizado.");
   });
 });

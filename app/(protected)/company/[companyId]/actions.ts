@@ -1,6 +1,6 @@
 "use server";
 
-import { asc, and, desc, eq, isNull, lte } from "drizzle-orm";
+import { asc, and, desc, eq, exists, isNull, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { requireCompanyMembership } from "@/app/lib/authz";
@@ -171,7 +171,9 @@ export async function activateEvent(formData: FormData) {
   const now = Date.now();
   if (now < current.startsAt.getTime() - 24 * 60 * 60 * 1000) throw new Error("El evento solo se puede activar durante las 24 horas previas.");
   if (now >= current.endsAt.getTime()) throw new Error("No se puede activar un evento ya finalizado.");
-  await db.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT")));
+  // The badge check lives in the UPDATE so a badge deleted meanwhile cannot leave an active event with none.
+  const [activated] = await db.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"), exists(db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId))))).returning({ id: event.id });
+  if (!activated) throw new Error("Agregá al menos un badge antes de activar el evento.");
   redirect(`/company/${companyId}`);
 }
 
@@ -218,9 +220,14 @@ export async function listEventBadges(companyId: string, eventId: string) {
 export async function createBadge(formData: FormData) {
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await companyEvent(companyId, eventId, true);
+  const current = await companyEvent(companyId, eventId);
+  const input = badgeInput(formData);
+  // An active event only grows optional badges: a required one would change who already completed it,
+  // and editing or deleting badges stays draft-only because redemptions and XP depend on them.
+  if (current.status === "FINISHED") throw new Error("No se pueden agregar badges a un evento finalizado.");
+  if (current.status === "ACTIVE" && input.required) throw new Error("En un evento activo solo se pueden agregar badges opcionales.");
   try {
-    await db.insert(badge).values({ id: randomUUID(), eventId, ...badgeInput(formData) });
+    await db.insert(badge).values({ id: randomUUID(), eventId, ...input });
   } catch (error) {
     const cause = error as { code?: string; cause?: { code?: string } };
     if (cause.code === "23505" || cause.cause?.code === "23505") throw new Error("Ya existe un badge con ese nombre en este evento.");

@@ -14,7 +14,7 @@ export function ActivateEventButton({ companyId, eventId }: { companyId: string;
       <dialog className="max-w-md rounded-3xl p-0 shadow-xl backdrop:bg-slate-900/50" ref={dialog}>
         <div className="grid gap-4 p-6">
           <h2 className="text-xl font-black text-slate-800">¿Activar este evento?</h2>
-          <p className="text-slate-600">Solo podés activarlo durante las 24 horas previas al inicio. Después de activarlo no se podrán hacer cambios en la configuración del evento.</p>
+          <p className="text-slate-600">Solo podés activarlo durante las 24 horas previas al inicio. Después de activarlo no vas a poder editar el evento ni sus badges; solo vas a poder sumar badges opcionales.</p>
           <div className="flex justify-end gap-3">
             <button className="rounded-full border border-slate-200 px-4 py-2 font-bold" onClick={() => dialog.current?.close()} type="button">Cancelar</button>
             <form action={activateEvent}>
