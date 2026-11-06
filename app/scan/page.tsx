@@ -4,8 +4,7 @@ import { scanToken } from "@/app/lib/scan";
 import { destinationAfterScan, scanMessage } from "@/app/lib/scan-message";
 import { accountChoiceLinks } from "@/app/lib/scan-next";
 import { currentUserId } from "@/app/scan/actions";
-import { ScanCamera } from "@/app/scan/scan-camera";
-import { ScanForm } from "@/app/scan/scan-form";
+import { ScanPanel } from "@/app/scan/scan-panel";
 
 export default async function ScanPage({
   searchParams,
@@ -36,8 +35,7 @@ export default async function ScanPage({
           {scanMessage(result)}
         </p>
       )}
-      <ScanCamera />
-      <ScanForm initialResult={null} />
+      <ScanPanel />
     </main>
   );
 }

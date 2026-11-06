@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { IScannerControls } from "@zxing/browser";
 import { extractScanToken } from "@/app/lib/scan-token";
@@ -8,11 +7,11 @@ import { Button } from "@/components/ui/button";
 
 type CameraStatus = "idle" | "starting" | "live" | "blocked";
 
-export function ScanCamera() {
+/** Reads a QR and hands the token to the panel, which sends it; navigating here would unload the page offline. */
+export function ScanCamera({ onToken }: { onToken: (token: string) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scanningRef = useRef(false);
-  const router = useRouter();
   const [status, setStatus] = useState<CameraStatus>("idle");
   const [message, setMessage] = useState<string | null>(null);
 
@@ -50,7 +49,9 @@ export function ScanCamera() {
       const controls = await readQrFromStream(video, stream, (token) => {
         controlsRef.current?.stop();
         controlsRef.current = null;
-        router.push(`/scan?t=${encodeURIComponent(token)}`);
+        scanningRef.current = false;
+        setStatus("idle");
+        onToken(token);
       });
       controlsRef.current = controls;
       setStatus("live");

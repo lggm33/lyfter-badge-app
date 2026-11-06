@@ -1,34 +1,22 @@
 "use client";
 
-import { useActionState } from "react";
-import { scanMessage, type ScanResult } from "@/app/lib/scan-message";
-import { submitScan } from "@/app/scan/actions";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 
-export function ScanForm({ initialResult }: { initialResult: ScanResult | null }) {
-  const [result, action, pending] = useActionState(submitScan, initialResult);
-
+export function ScanForm({ onToken, busy }: { onToken: (token: string) => void; busy: boolean }) {
   return (
-    <form action={action} className="mt-6 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5">
+    <form
+      className="mt-6 flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const token = String(new FormData(event.currentTarget).get("token") ?? "").trim();
+        if (token) onToken(token);
+      }}
+    >
       <FormField id="token" name="token" label="Código o link" placeholder="Pegá el token o la URL" />
-      {result && <CheckInNotice result={result} />}
-      <Button type="submit" isLoading={pending}>
+      <Button type="submit" isLoading={busy}>
         Usar este código
       </Button>
     </form>
-  );
-}
-
-function CheckInNotice({ result }: { result: ScanResult }) {
-  const success = result.ok;
-  return (
-    <p
-      className={`rounded-2xl px-4 py-3 text-sm font-semibold ${
-        success ? "bg-[#add195]/40 text-slate-800" : "bg-[#e88f95]/20 text-slate-800"
-      }`}
-    >
-      {scanMessage(result)}
-    </p>
   );
 }

@@ -7,11 +7,9 @@ import { extractScanToken } from "@/app/lib/check-in";
 import { scanToken } from "@/app/lib/scan";
 import { destinationAfterScan, type ScanResult } from "@/app/lib/scan-message";
 
-export async function submitScan(
-  _previous: ScanResult | null,
-  formData: FormData,
-): Promise<ScanResult> {
-  const token = extractScanToken(String(formData.get("token") ?? ""));
+/** Called by the in-page camera and the paste form, so both can retry the same request. */
+export async function submitScan(rawToken: string): Promise<ScanResult> {
+  const token = extractScanToken(rawToken);
   const userId = await currentUserId();
 
   if (!userId) {
