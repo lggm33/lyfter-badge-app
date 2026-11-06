@@ -19,6 +19,7 @@ La fundación está lista: Next.js con App Router, TypeScript, Tailwind CSS y ES
     pnpm install
     pnpm db:migrate
     pnpm db:seed
+    pnpm db:seed:dev       # opcional: empresa, evento y participante de demo
     pnpm dev
 
 Abrí http://localhost:3000.
@@ -41,6 +42,15 @@ local.
     pnpm db:generate  # genera migraciones desde el schema
     pnpm db:migrate   # aplica migraciones pendientes
     pnpm db:seed      # crea/promueve el Super Admin inicial (idempotente)
+    pnpm db:seed:dev  # datos de demo en la DB local (idempotente, se niega fuera de localhost)
+
+`pnpm db:seed:dev` crea la empresa **Lyfter Demo** con el evento activo
+**Demo Day**, que vuelve a abrirse por 30 días cada vez que corrés el seed, y
+cuatro badges. Las dos cuentas usan la contraseña `lyfter-dev-1234`:
+
+- `admin@demo.test`: COMPANY_ADMIN de Lyfter Demo, para ver los QR del evento.
+- `participante@demo.test`: con check-in y dos badges canjeados (150 XP, nivel 2).
+  Si escanea **Stand de datos** llega a 200 XP y ve el aviso de subida al nivel 3.
 
 `pnpm db:seed` lee `SUPER_ADMIN_EMAIL` y `SUPER_ADMIN_PASSWORD` de `.env`. Si el
 email ya existe solo garantiza el rol `SUPER_ADMIN`; nunca pisa la contraseña.

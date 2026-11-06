@@ -35,7 +35,7 @@ async function assertOwnsAccount(email: string, password: string) {
 }
 
 /** El seed no entrega la sesión que abre para validar: queda viva sin dueño. */
-async function dropSession(token: string | null | undefined) {
+export async function dropSession(token: string | null | undefined) {
   if (token) {
     await db.delete(session).where(eq(session.token, token));
   }
