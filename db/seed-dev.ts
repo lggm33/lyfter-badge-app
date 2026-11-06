@@ -38,6 +38,24 @@ async function ensureUser(email: string, name: string) {
   return created.user.id;
 }
 
+/** Inserts the event or moves its status and dates, so every run leaves it in the state the seed describes. */
+async function upsertEvent(
+  companyId: string,
+  slug: string,
+  values: { name: string; status: string; startsAt: Date; endsAt: Date; description?: string; location?: string },
+) {
+  const { status, startsAt, endsAt } = values;
+  await db
+    .insert(event)
+    .values({ id: randomUUID(), companyId, slug, ...values })
+    .onConflictDoUpdate({ target: [event.companyId, event.slug], set: { status, startsAt, endsAt } });
+  const [{ id }] = await db
+    .select({ id: event.id })
+    .from(event)
+    .where(and(eq(event.companyId, companyId), eq(event.slug, slug)));
+  return id;
+}
+
 /**
  * Idempotent. Re-running reopens the event for 30 more days, so the demo data
  * never goes stale; redemptions and XP are only written once.
@@ -62,28 +80,28 @@ export async function seedDev() {
     .values({ id: randomUUID(), companyId, userId: adminId, role: "COMPANY_ADMIN" })
     .onConflictDoNothing();
 
+  const day = 24 * 60 * 60 * 1000;
   const now = Date.now();
-  const window = {
+  const eventId = await upsertEvent(companyId, "demo-day", {
+    name: "Demo Day",
+    description: "Evento de prueba para desarrollo local.",
+    location: "Sala principal",
     status: "ACTIVE",
     startsAt: new Date(now - 60 * 60 * 1000),
-    endsAt: new Date(now + 30 * 24 * 60 * 60 * 1000),
-  };
-  await db
-    .insert(event)
-    .values({
-      id: randomUUID(),
-      companyId,
-      name: "Demo Day",
-      slug: "demo-day",
-      description: "Evento de prueba para desarrollo local.",
-      location: "Sala principal",
-      ...window,
-    })
-    .onConflictDoUpdate({ target: [event.companyId, event.slug], set: window });
-  const [{ id: eventId }] = await db
-    .select({ id: event.id })
-    .from(event)
-    .where(and(eq(event.companyId, companyId), eq(event.slug, "demo-day")));
+    endsAt: new Date(now + 30 * day),
+  });
+  // One event per remaining state, so the panel shows all three without editing the database by hand.
+  const extraEvents = [
+    { slug: "hackathon", name: "Hackathon", status: "DRAFT", startsAt: new Date(now + 20 * day), endsAt: new Date(now + 21 * day), badge: "Demo final" },
+    { slug: "kickoff", name: "Kickoff", status: "FINISHED", startsAt: new Date(now - 60 * day), endsAt: new Date(now - 59 * day), badge: "Bienvenida Kickoff" },
+  ];
+  for (const { slug, badge: badgeName, ...values } of extraEvents) {
+    const id = await upsertEvent(companyId, slug, values);
+    await db
+      .insert(badge)
+      .values({ id: randomUUID(), eventId: id, name: badgeName, type: "CONTENT", rarity: "COMMON", icon: "⭐", xp: 50 })
+      .onConflictDoNothing();
+  }
 
   await db
     .insert(eventMembership)

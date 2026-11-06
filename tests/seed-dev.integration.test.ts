@@ -4,7 +4,7 @@ import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { assertLocalDatabase } from "@/db/local-only";
 import { DEV_ADMIN_EMAIL, DEV_PARTICIPANT_EMAIL, seedDev } from "@/db/seed-dev";
-import { badge, company, xpLedger } from "@/db/schema";
+import { badge, company, event, xpLedger } from "@/db/schema";
 import { requireTestEnv } from "./helpers";
 
 describe("dev seed", () => {
@@ -36,5 +36,12 @@ describe("dev seed", () => {
 
     expect(Number(xp.total)).toBe(150);
     expect(badges).toHaveLength(4);
+
+    const statuses = await db
+      .select({ status: event.status })
+      .from(event)
+      .innerJoin(company, eq(company.id, event.companyId))
+      .where(eq(company.slug, "lyfter-demo"));
+    expect(statuses.map((row) => row.status).sort()).toEqual(["ACTIVE", "DRAFT", "FINISHED"]);
   });
 });
