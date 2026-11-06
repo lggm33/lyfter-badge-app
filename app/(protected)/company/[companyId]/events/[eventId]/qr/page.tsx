@@ -1,7 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { QrAutoRefresh } from "@/components/qr-auto-refresh";
-import { QrCode } from "@/components/qr-code";
 import { CreateDisplayLinkForm } from "@/components/create-display-link-form";
 import { EventStatusBadge } from "@/components/event-status-badge";
 import { getQrDisplay, listQrDisplays, revokeQrDisplay, type QrDisplayRow } from "../../../actions";
@@ -35,9 +33,7 @@ export default async function EventQrPage({
       {display.status === "active" ? <>
         <p className="text-sm text-slate-500">{display.eventName}</p>
         <h1 className="text-2xl font-black tracking-tight text-slate-800">{display.title}</h1>
-        <QrCode value={display.url} className="mx-auto max-w-xs" />
-        <p className="text-sm text-slate-500">Se actualiza cada 30 segundos</p>
-        <QrAutoRefresh nextRotationAt={display.nextRotationAt.toISOString()} />
+        <p className="text-sm text-slate-500">El QR se muestra en la pantalla del stand y cambia cada 30 segundos. Creá un link de pantalla y abrilo en la tablet.</p>
       </> : <>
         <p className="text-sm text-slate-500">{display.eventName}</p>
         <h1 className="text-xl font-black tracking-tight text-slate-800">El QR solo está disponible con el evento activo.</h1>
