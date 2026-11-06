@@ -1,19 +1,36 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMyBadge } from "@/app/(protected)/home/actions";
+import { getLevelProgress } from "@/app/lib/levels";
 
 export default async function BadgePage({
   params,
   searchParams,
 }: {
   params: Promise<{ badgeId: string }>;
-  searchParams?: Promise<{ fresh?: string | string[] }>;
+  searchParams?: Promise<{
+    fresh?: string | string[];
+    levelUpTo?: string | string[];
+    totalXp?: string | string[];
+  }>;
 }) {
   const { badgeId } = await params;
   const earned = await getMyBadge(badgeId);
   if (!earned) redirect("/home");
 
-  const fresh = firstValue(searchParams ? (await searchParams).fresh : undefined) === "1";
+  const queryParams = searchParams ? await searchParams : {};
+  const fresh = firstValue(queryParams.fresh) === "1";
+  const reportedLevel = Number(firstValue(queryParams.levelUpTo));
+  const xpAfter = Number(firstValue(queryParams.totalXp));
+  const previousXp = xpAfter - earned.xp;
+  const reachedLevel =
+    fresh &&
+    Number.isInteger(reportedLevel) &&
+    Number.isInteger(xpAfter) &&
+    xpAfter <= earned.totalXp &&
+    previousXp >= 0 &&
+    getLevelProgress(xpAfter).level === reportedLevel &&
+    getLevelProgress(previousXp).level < reportedLevel;
   const label = `${earned.icon ? `${earned.icon} ` : ""}${earned.name}`;
 
   return (
@@ -27,6 +44,11 @@ export default async function BadgePage({
           ? `Obtuviste el badge ${label} y ${earned.xp} XP.`
           : `Ya tenías el badge ${label} y sus ${earned.xp} XP.`}
       </p>
+      {reachedLevel && (
+        <p className="rounded-2xl bg-[#d798e7]/30 px-4 py-3 font-bold text-slate-800">
+          ¡Subiste al nivel {reportedLevel}!
+        </p>
+      )}
       <p className="text-sm text-slate-500">{earned.eventName}</p>
       <Link
         className="rounded-full bg-slate-800 px-7 py-3 text-center font-bold text-white"

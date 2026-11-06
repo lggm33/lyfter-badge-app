@@ -7,6 +7,8 @@ export type RedeemSuccess = {
   badgeName: string;
   eventName: string;
   xp: number;
+  levelUpTo: number | null;
+  totalXpAfter: number | null;
 };
 
 export type RedeemFailure = {
@@ -24,8 +26,13 @@ export function destinationAfterScan(result: ScanResult) {
   if (result.flow === "checkin") {
     return `/home?notice=checkin&name=${encodeURIComponent(result.eventName)}`;
   }
-  const fresh = result.outcome === "granted" ? "?fresh=1" : "";
-  return `/badge/${result.badgeId}${fresh}`;
+  if (result.outcome !== "granted") return `/badge/${result.badgeId}`;
+  const params = new URLSearchParams({ fresh: "1" });
+  if (result.levelUpTo !== null && result.totalXpAfter !== null) {
+    params.set("levelUpTo", String(result.levelUpTo));
+    params.set("totalXp", String(result.totalXpAfter));
+  }
+  return `/badge/${result.badgeId}?${params}`;
 }
 
 export function scanMessage(result: ScanResult) {

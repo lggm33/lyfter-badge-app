@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, sum } from "drizzle-orm";
+import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { badge, badgeRedemption, event, eventMembership, xpLedger } from "@/db/schema";
 import { extractScanToken } from "@/app/lib/check-in";
+import { getLevelProgress } from "@/app/lib/levels";
 import type { RedeemResult } from "@/app/lib/scan-message";
 import { verifyQrToken } from "@/app/lib/qr-token";
 
@@ -43,6 +45,8 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       return { ok: false, reason: "event_closed" };
     }
 
+    await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");
+
     await tx
       .insert(eventMembership)
       .values({
@@ -75,8 +79,19 @@ export async function redeemBadge(token: string, userId: string | null): Promise
         badgeName: row.badgeName,
         eventName: row.eventName,
         xp: row.xp,
+        levelUpTo: null,
+        totalXpAfter: null,
       };
     }
+
+    const [totalRow] = await tx
+      .select({ total: sum(xpLedger.amount) })
+      .from(xpLedger)
+      .where(eq(xpLedger.userId, userId));
+    const previousXp = Number(totalRow?.total ?? 0);
+    const previousLevel = getLevelProgress(previousXp).level;
+    const totalXpAfter = previousXp + row.xp;
+    const levelAfter = getLevelProgress(totalXpAfter).level;
 
     const redemptionId = inserted[0].id;
     await tx.insert(xpLedger).values({
@@ -93,6 +108,8 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       badgeName: row.badgeName,
       eventName: row.eventName,
       xp: row.xp,
+      levelUpTo: levelAfter > previousLevel ? levelAfter : null,
+      totalXpAfter,
     };
   });
 }

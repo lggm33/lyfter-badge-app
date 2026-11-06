@@ -63,21 +63,25 @@ export async function listMyCollection() {
 
 export async function getMyBadge(badgeId: string) {
   const session = await requireSession();
-  const [row] = await db
-    .select({
-      badgeId: badge.id,
-      name: badge.name,
-      icon: badge.icon,
-      eventName: event.name,
-      xp: xpLedger.amount,
-    })
-    .from(badgeRedemption)
-    .innerJoin(badge, eq(badgeRedemption.badgeId, badge.id))
-    .innerJoin(event, eq(badgeRedemption.eventId, event.id))
-    .innerJoin(xpLedger, eq(xpLedger.redemptionId, badgeRedemption.id))
-    .where(and(eq(badgeRedemption.userId, session.user.id), eq(badge.id, badgeId)));
+  const [rows, totalRow] = await Promise.all([
+    db
+      .select({
+        badgeId: badge.id,
+        name: badge.name,
+        icon: badge.icon,
+        eventName: event.name,
+        xp: xpLedger.amount,
+      })
+      .from(badgeRedemption)
+      .innerJoin(badge, eq(badgeRedemption.badgeId, badge.id))
+      .innerJoin(event, eq(badgeRedemption.eventId, event.id))
+      .innerJoin(xpLedger, eq(xpLedger.redemptionId, badgeRedemption.id))
+      .where(and(eq(badgeRedemption.userId, session.user.id), eq(badge.id, badgeId))),
+    db.select({ total: sum(xpLedger.amount) }).from(xpLedger).where(eq(xpLedger.userId, session.user.id)),
+  ]);
 
-  return row ?? null;
+  const row = rows[0];
+  return row ? { ...row, totalXp: Number(totalRow[0]?.total ?? 0) } : null;
 }
 
 type MembershipRow = {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/app/lib/authz";
+import { getLevelProgress, XP_PER_LEVEL } from "@/app/lib/levels";
 import { listMyCollection, listMyCompanies } from "./actions";
 import { MyCompanies } from "./my-companies";
 
@@ -12,6 +13,7 @@ export default async function HomePage({
   const companies = await listMyCompanies();
   const collection = await listMyCollection();
   const notice = welcomeNotice(searchParams ? await searchParams : {});
+  const progress = getLevelProgress(collection.totalXp);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col items-start gap-6 px-6 py-16">
@@ -32,6 +34,23 @@ export default async function HomePage({
       <Link className="text-3xl font-black tracking-tight text-slate-800" href="/badges">
         {collection.totalXp} XP
       </Link>
+      <section aria-label="Progreso de nivel" className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-lg font-black text-slate-800">Nivel {progress.level}</h2>
+          <p className="text-sm font-semibold text-slate-600">
+            {progress.xpInLevel}/{XP_PER_LEVEL} XP
+          </p>
+        </div>
+        <progress
+          aria-label={`Progreso hacia el nivel ${progress.level + 1}`}
+          className="mt-3 h-3 w-full accent-[#71ceff]"
+          max={XP_PER_LEVEL}
+          value={progress.progressPercent}
+        />
+        <p className="mt-2 text-sm text-slate-600">
+          {progress.xpToNextLevel} XP para llegar al nivel {progress.level + 1}
+        </p>
+      </section>
       <MyCompanies companies={companies} />
     </main>
   );

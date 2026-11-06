@@ -10,8 +10,10 @@ import { postAuth, requireTestEnv, uniqueEmail } from "./helpers";
 
 const password = "integration-test-password";
 const email = uniqueEmail("redeem");
+const levelEmail = uniqueEmail("level-up");
 const companyId = randomUUID();
 let userId = "";
+let levelUserId = "";
 
 function shift(windows: number) {
   return new Date(Date.now() + windows * QR_WINDOW_SECONDS * 1000);
@@ -60,12 +62,16 @@ describe("badge redemption", () => {
     const signUp = await postAuth("/sign-up/email", { name: "Redeemer", email, password });
     expect(signUp.status).toBe(200);
     userId = (await signUp.json()).user.id;
+    const levelSignUp = await postAuth("/sign-up/email", { name: "Level Up", email: levelEmail, password });
+    expect(levelSignUp.status).toBe(200);
+    levelUserId = (await levelSignUp.json()).user.id;
     await db.insert(company).values({ id: companyId, name: "Redeem Co", slug: `redeem-${companyId}` });
   });
 
   afterAll(async () => {
     await db.delete(company).where(eq(company.id, companyId));
     await db.delete(user).where(eq(user.email, email));
+    await db.delete(user).where(eq(user.email, levelEmail));
   });
 
   it("otorga el badge y escribe el XP una sola vez", async () => {
@@ -87,8 +93,10 @@ describe("badge redemption", () => {
       badgeName: "Stand QR",
       eventName: "Demo Day",
       xp: 250,
+      levelUpTo: 3,
+      totalXpAfter: 250,
     });
-    expect(second).toMatchObject({ ok: true, outcome: "already_redeemed", xp: 250 });
+    expect(second).toMatchObject({ ok: true, outcome: "already_redeemed", xp: 250, levelUpTo: null, totalXpAfter: null });
     expect(redemptions).toHaveLength(1);
     expect(forThisBadge).toEqual([expect.objectContaining({ amount: 250 })]);
   });
@@ -115,9 +123,26 @@ describe("badge redemption", () => {
       badgeName: "Stand QR",
       eventName: "Demo Day",
       xp: 40,
+      levelUpTo: null,
+      totalXpAfter: 40,
     });
     expect(mine).toHaveLength(1);
     expect(redemptions).toHaveLength(1);
+  });
+
+  it("registra un solo nivel alcanzado cuando dos canjes cruzan el umbral en paralelo", async () => {
+    const eventA = await openEvent();
+    const eventB = await openEvent();
+    const badgeA = await addBadge(eventA, 50);
+    const badgeB = await addBadge(eventB, 50);
+
+    const results = await Promise.all([
+      redeemBadge(signQrToken({ kind: "badge", subjectId: badgeA }), levelUserId),
+      redeemBadge(signQrToken({ kind: "badge", subjectId: badgeB }), levelUserId),
+    ]);
+
+    expect(results.every((result) => result.ok && result.outcome === "granted")).toBe(true);
+    expect(results.filter((result) => result.ok && result.levelUpTo !== null).map((result) => result.ok && result.levelUpTo)).toEqual([2]);
   });
 
   it("rechaza un QR vencido sin escribir", async () => {
