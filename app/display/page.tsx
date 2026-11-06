@@ -1,5 +1,6 @@
 import { getPairedDisplay } from "@/app/display/actions";
 import { qrNextRotation } from "@/app/lib/qr-token";
+import { EventStatusBadge } from "@/components/event-status-badge";
 import { QrAutoRefresh } from "@/components/qr-auto-refresh";
 import { QrCode } from "@/components/qr-code";
 
@@ -20,7 +21,7 @@ export default async function DisplayPage() {
         <div className="grid gap-3">
           <h1 className="text-2xl font-black">{display.eventName}</h1>
           <p className="text-slate-400">El QR aparece cuando el evento esté activo.</p>
-          <p className="text-slate-400">Estado actual: {display.eventStatus}</p>
+          <p className="text-slate-400">Estado actual: <EventStatusBadge status={display.eventStatus} /></p>
         </div>
       )}
       {display?.status === "active" && (

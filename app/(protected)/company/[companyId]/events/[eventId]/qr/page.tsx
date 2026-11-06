@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { QrAutoRefresh } from "@/components/qr-auto-refresh";
 import { QrCode } from "@/components/qr-code";
 import { CreateDisplayLinkForm } from "@/components/create-display-link-form";
+import { EventStatusBadge } from "@/components/event-status-badge";
 import { getQrDisplay, listQrDisplays, revokeQrDisplay, type QrDisplayRow } from "../../../actions";
 
 const displayStatusLabel: Record<QrDisplayRow["status"], string> = {
@@ -40,7 +41,7 @@ export default async function EventQrPage({
       </> : <>
         <p className="text-sm text-slate-500">{display.eventName}</p>
         <h1 className="text-xl font-black tracking-tight text-slate-800">El QR solo está disponible con el evento activo.</h1>
-        <p className="text-sm text-slate-500">Estado actual: {display.eventStatus}</p>
+        <p className="text-sm text-slate-500">Estado actual: <EventStatusBadge status={display.eventStatus} /></p>
       </>}
     </div>
     {display.status === "active" && <section className="grid w-full gap-4 rounded-2xl bg-white p-6 shadow-sm">
