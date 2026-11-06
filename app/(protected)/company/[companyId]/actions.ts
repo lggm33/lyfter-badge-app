@@ -3,6 +3,7 @@
 import { asc, and, desc, eq, exists, isNull, lte } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
+import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
 import { requireCompanyMembership } from "@/app/lib/authz";
 import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
 import type { QrDisplay } from "@/app/lib/qr-display";
@@ -99,14 +100,14 @@ function eventInput(formData: FormData) {
   const startsAt = new Date(String(formData.get("startsAt") ?? ""));
   const endsAt = new Date(String(formData.get("endsAt") ?? ""));
 
-  if (!name || name.length > 160) throw new Error("El nombre debe tener entre 1 y 160 caracteres.");
+  if (!name || name.length > 160) throw new ActionError("El nombre debe tener entre 1 y 160 caracteres.");
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 100) {
-    throw new Error("El slug solo puede usar minúsculas, números y guiones.");
+    throw new ActionError("El slug solo puede usar minúsculas, números y guiones.");
   }
   if (Number.isNaN(startsAt.valueOf()) || Number.isNaN(endsAt.valueOf()) || startsAt >= endsAt) {
-    throw new Error("Las fechas del evento no son válidas.");
+    throw new ActionError("Las fechas del evento no son válidas.");
   }
-  if (startsAt <= new Date()) throw new Error("El evento no puede comenzar en el pasado.");
+  if (startsAt <= new Date()) throw new ActionError("El evento no puede comenzar en el pasado.");
 
   return { name, slug, description: String(formData.get("description") ?? "").trim() || null, location: String(formData.get("location") ?? "").trim() || null, startsAt, endsAt };
 }
@@ -122,42 +123,31 @@ export async function listMyCompanyEvents(companyId: string) {
   return rows.map((row) => ({ ...row, canActivate: row.status === "DRAFT" && now >= row.startsAt.getTime() - 24 * 60 * 60 * 1000 && now < row.endsAt.getTime() }));
 }
 
-const eventFields = ["name", "slug", "description", "location", "startsAt", "endsAt"] as const;
-type EventFormValues = Partial<Record<(typeof eventFields)[number], string>>;
-type EventFormState = { error?: string; values?: EventFormValues } | null;
-
-export async function createEvent(previousState: EventFormState | FormData, maybeFormData?: FormData): Promise<EventFormState> {
+export async function createEvent(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   await requireCompanyMembership(companyId);
-  // React resets the form after the action; echoing the input keeps it on error.
-  const values = Object.fromEntries(eventFields.map((field) => [field, String(formData.get(field) ?? "")]));
-  let input;
-  try {
-    input = eventInput(formData);
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "Los datos del evento no son válidos.", values };
-  }
-  try {
-    await db.insert(event).values({ id: randomUUID(), companyId, ...input });
-  } catch (error) {
-    const cause = error as { code?: string; cause?: { code?: string } };
-    if (cause.code === "23505" || cause.cause?.code === "23505") return { error: "Ya existe un evento con ese slug en esta empresa.", values };
-    throw error;
-  }
+  const failure = await formResult(
+    () => db.insert(event).values({ id: randomUUID(), companyId, ...eventInput(formData) }),
+    "Ya existe un evento con ese slug en esta empresa.",
+  );
+  if (failure) return failure;
   redirect(`/company/${companyId}`);
 }
 
-export async function updateEvent(formData: FormData) {
+export async function updateEvent(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   await requireCompanyMembership(companyId);
-  const [current] = await db.select({ status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
-  if (!current) throw new Error("El evento no existe.");
-  if (current.status !== "DRAFT") throw new Error("No se pueden editar eventos activados.");
-  const input = eventInput(formData);
-  const [updated] = await db.update(event).set({ ...input, updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"))).returning({ id: event.id });
-  if (!updated) throw new Error("El evento no existe.");
+  const failure = await formResult(async () => {
+    const [current] = await db.select({ status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+    if (!current) throw new ActionError("El evento no existe.");
+    if (current.status !== "DRAFT") throw new ActionError("No se pueden editar eventos activados.");
+    const [updated] = await db.update(event).set({ ...eventInput(formData), updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"))).returning({ id: event.id });
+    if (!updated) throw new ActionError("El evento no existe.");
+  }, "Ya existe un evento con ese slug en esta empresa.");
+  if (failure) return failure;
   redirect(`/company/${companyId}`);
 }
 
@@ -191,8 +181,8 @@ const badgeRarities = ["COMMON", "RARE", "EPIC", "LEGENDARY"] as const;
 async function companyEvent(companyId: string, eventId: string, draftOnly = false) {
   await requireCompanyMembership(companyId);
   const [row] = await db.select({ id: event.id, status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
-  if (!row) throw new Error("El evento no existe.");
-  if (draftOnly && row.status !== "DRAFT") throw new Error("Solo se pueden modificar badges de eventos en borrador.");
+  if (!row) throw new ActionError("El evento no existe.");
+  if (draftOnly && row.status !== "DRAFT") throw new ActionError("Solo se pueden modificar badges de eventos en borrador.");
   return row;
 }
 
@@ -205,10 +195,10 @@ function badgeInput(formData: FormData) {
   const xp = Number(formData.get("xp"));
   const required = formData.get("required") === "on";
 
-  if (!name || name.length > 120) throw new Error("El nombre del badge debe tener entre 1 y 120 caracteres.");
-  if (!badgeTypes.includes(type as (typeof badgeTypes)[number])) throw new Error("El tipo de badge no es válido.");
-  if (!badgeRarities.includes(rarity as (typeof badgeRarities)[number])) throw new Error("La rareza del badge no es válida.");
-  if (!Number.isInteger(xp) || xp < 0 || xp > 100000) throw new Error("La XP debe ser un entero entre 0 y 100000.");
+  if (!name || name.length > 120) throw new ActionError("El nombre del badge debe tener entre 1 y 120 caracteres.");
+  if (!badgeTypes.includes(type as (typeof badgeTypes)[number])) throw new ActionError("El tipo de badge no es válido.");
+  if (!badgeRarities.includes(rarity as (typeof badgeRarities)[number])) throw new ActionError("La rareza del badge no es válida.");
+  if (!Number.isInteger(xp) || xp < 0 || xp > 100000) throw new ActionError("La XP debe ser un entero entre 0 y 100000.");
   return { name, description, type, rarity, icon, xp, required };
 }
 
@@ -217,33 +207,34 @@ export async function listEventBadges(companyId: string, eventId: string) {
   return db.select().from(badge).where(eq(badge.eventId, eventId)).orderBy(asc(badge.name));
 }
 
-export async function createBadge(formData: FormData) {
+export async function createBadge(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  const current = await companyEvent(companyId, eventId);
-  const input = badgeInput(formData);
-  // An active event only grows optional badges: a required one would change who already completed it,
-  // and editing or deleting badges stays draft-only because redemptions and XP depend on them.
-  if (current.status === "FINISHED") throw new Error("No se pueden agregar badges a un evento finalizado.");
-  if (current.status === "ACTIVE" && input.required) throw new Error("En un evento activo solo se pueden agregar badges opcionales.");
-  try {
+  const failure = await formResult(async () => {
+    const current = await companyEvent(companyId, eventId);
+    const input = badgeInput(formData);
+    // An active event only grows optional badges: a required one would change who already completed it,
+    // and editing or deleting badges stays draft-only because redemptions and XP depend on them.
+    if (current.status === "FINISHED") throw new ActionError("No se pueden agregar badges a un evento finalizado.");
+    if (current.status === "ACTIVE" && input.required) throw new ActionError("En un evento activo solo se pueden agregar badges opcionales.");
     await db.insert(badge).values({ id: randomUUID(), eventId, ...input });
-  } catch (error) {
-    const cause = error as { code?: string; cause?: { code?: string } };
-    if (cause.code === "23505" || cause.cause?.code === "23505") throw new Error("Ya existe un badge con ese nombre en este evento.");
-    throw error;
-  }
+  }, "Ya existe un badge con ese nombre en este evento.");
+  if (failure) return failure;
   redirect(`/company/${companyId}`);
 }
 
-export async function updateBadge(formData: FormData) {
+export async function updateBadge(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const badgeId = String(formData.get("badgeId") ?? "");
-  await companyEvent(companyId, eventId, true);
-  const input = badgeInput(formData);
-  const [updated] = await db.update(badge).set({ ...input, updatedAt: new Date() }).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id });
-  if (!updated) throw new Error("El badge no existe.");
+  const failure = await formResult(async () => {
+    await companyEvent(companyId, eventId, true);
+    const [updated] = await db.update(badge).set({ ...badgeInput(formData), updatedAt: new Date() }).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id });
+    if (!updated) throw new ActionError("El badge no existe.");
+  }, "Ya existe un badge con ese nombre en este evento.");
+  if (failure) return failure;
   redirect(`/company/${companyId}`);
 }
 

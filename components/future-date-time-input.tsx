@@ -8,7 +8,7 @@ function localDateTime() {
   return new Date(now.getTime() - offset).toISOString().slice(0, 16);
 }
 
-export function FutureDateTimeInput({ defaultValue }: { defaultValue?: string }) {
+export function FutureDateTimeInput() {
   const [min, setMin] = useState("");
 
   useEffect(() => {
@@ -16,5 +16,5 @@ export function FutureDateTimeInput({ defaultValue }: { defaultValue?: string })
     return () => window.clearTimeout(timer);
   }, []);
 
-  return <input className="rounded-xl border border-slate-200 px-4 py-3 font-normal" type="datetime-local" name="startsAt" min={min || undefined} defaultValue={defaultValue} required />;
+  return <input className="rounded-xl border border-slate-200 px-4 py-3 font-normal" type="datetime-local" name="startsAt" min={min || undefined} required />;
 }

@@ -7,7 +7,7 @@ const redirectMock = vi.hoisted(() => vi.fn((path: string): never => { throw new
 vi.mock("next/headers", () => ({ headers: headersMock }));
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 
-import { activateEvent, createBadge, createEvent, deleteBadge, listEventBadges, listMyCompanyEvents, updateBadge } from "@/app/(protected)/company/[companyId]/actions";
+import { activateEvent, createBadge, createEvent, deleteBadge, listEventBadges, listMyCompanyEvents, updateBadge, updateEvent } from "@/app/(protected)/company/[companyId]/actions";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { badge, company, companyMember, event } from "@/db/schema";
@@ -60,12 +60,12 @@ describe("event actions integration", () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: hoursFromNow(72), endsAt: hoursFromNow(70) }))).resolves.toMatchObject({ error: "Las fechas del evento no son válidas." });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toMatchObject({ error: "Ya existe un evento con ese slug en esta empresa.", values: { name: "Duplicate", slug: "demo" } });
+    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toMatchObject({ error: "Ya existe un evento con ese slug en esta empresa." });
   });
 
   it("rejects events that start in the past", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Past", slug: "past", startsAt: "2020-01-01T10:00", endsAt: "2020-01-01T18:00" }))).resolves.toMatchObject({ error: "El evento no puede comenzar en el pasado.", values: { name: "Past", startsAt: "2020-01-01T10:00" } });
+    await expect(createEvent(form({ companyId, name: "Past", slug: "past", startsAt: "2020-01-01T10:00", endsAt: "2020-01-01T18:00" }))).resolves.toMatchObject({ error: "El evento no puede comenzar en el pasado." });
   });
 
   it("only activates during the 24 hours before the event", async () => {
@@ -97,6 +97,12 @@ describe("event actions integration", () => {
     await expect(listEventBadges(companyId, eventId)).resolves.toMatchObject([{ name: "Welcome", xp: 100, required: true }]);
     const [created] = await db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId));
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createBadge(form({ companyId, eventId, name: "Welcome", type: "CONTENT", rarity: "COMMON", xp: "50" }))).resolves.toEqual({ error: "Ya existe un badge con ese nombre en este evento." });
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(updateBadge(form({ companyId, eventId, badgeId: created.id, name: "Welcome updated", type: "TALK", rarity: "RARE", xp: "-5" }))).resolves.toEqual({ error: "La XP debe ser un entero entre 0 y 100000." });
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(updateEvent(form({ companyId, eventId, name: "Badges", slug: "badges", startsAt: "2020-01-01T10:00", endsAt: "2020-01-01T18:00" }))).resolves.toEqual({ error: "El evento no puede comenzar en el pasado." });
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(updateBadge(form({ companyId, eventId, badgeId: created.id, name: "Welcome updated", type: "TALK", rarity: "RARE", xp: "200" }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(deleteBadge(form({ companyId, eventId, badgeId: created.id }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
@@ -108,7 +114,7 @@ describe("event actions integration", () => {
     await db.insert(event).values({ id: eventId, companyId, name: "Live", slug: "live", startsAt: new Date(Date.now() - 60 * 60 * 1000), endsAt: new Date(Date.now() + 60 * 60 * 1000), status: "ACTIVE" });
     const fields = { companyId, eventId, type: "STAND", rarity: "COMMON", xp: "50" };
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createBadge(form({ ...fields, name: "Required", required: "on" }))).rejects.toThrow("En un evento activo solo se pueden agregar badges opcionales.");
+    await expect(createBadge(form({ ...fields, name: "Required", required: "on" }))).resolves.toEqual({ error: "En un evento activo solo se pueden agregar badges opcionales." });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(createBadge(form({ ...fields, name: "Surprise" }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     await expect(db.select({ name: badge.name, required: badge.required }).from(badge).where(eq(badge.eventId, eventId))).resolves.toEqual([{ name: "Surprise", required: false }]);
@@ -118,6 +124,6 @@ describe("event actions integration", () => {
 
     await db.update(event).set({ status: "FINISHED" }).where(eq(event.id, eventId));
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createBadge(form({ ...fields, name: "Late" }))).rejects.toThrow("No se pueden agregar badges a un evento finalizado.");
+    await expect(createBadge(form({ ...fields, name: "Late" }))).resolves.toEqual({ error: "No se pueden agregar badges a un evento finalizado." });
   });
 });
