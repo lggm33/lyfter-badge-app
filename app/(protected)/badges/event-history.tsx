@@ -57,7 +57,7 @@ function BadgeList({ badges }: { badges: History["events"][number]["badges"] }) 
   );
 }
 
-function ScanLink({ label }: { label: string }) {
+export function ScanLink({ label }: { label: string }) {
   return (
     <Link
       className="mt-3 inline-flex rounded-full bg-slate-800 px-5 py-3 text-sm font-bold text-white"

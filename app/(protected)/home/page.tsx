@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/app/lib/authz";
+import { ScanLink } from "@/app/(protected)/badges/event-history";
 import { getLevelProgress, XP_PER_LEVEL } from "@/app/lib/levels";
 import { listMyCollection, listMyCompanies } from "./actions";
 import { MyCompanies } from "./my-companies";
@@ -50,6 +51,7 @@ export default async function HomePage({
         <p className="mt-2 text-sm text-slate-600">
           {progress.xpToNextLevel} XP para llegar al nivel {progress.level + 1}
         </p>
+        {collection.events.length === 0 && <ScanLink label="Registrar tu primer evento" />}
       </section>
       <MyCompanies companies={companies} />
     </main>

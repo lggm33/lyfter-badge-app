@@ -86,6 +86,7 @@ describe("auth integration", () => {
     expect(homeMarkup).toContain("Tu historial agrupa los badges por evento.");
     expect(homeMarkup).toContain("0 XP");
     expect(homeMarkup).toContain('href="/badges"');
+    expect(homeMarkup).toContain("Registrar tu primer evento");
     expect(homeMarkup).not.toContain("Mis empresas");
     expect(homeMarkup).not.toContain("Tu empresa");
 
