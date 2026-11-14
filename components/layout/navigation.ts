@@ -10,11 +10,13 @@ export function getNavigationItems(context: ShellContext): NavigationItem[] {
     return [
       { label: "Inicio", href: `/company/${context.companyId}` },
       { label: "Eventos", href: `/company/${context.companyId}#eventos` },
+      { label: "Métricas", href: `/company/${context.companyId}/metrics` },
       { label: "Auditoría", href: `/company/${context.companyId}/audit` },
     ];
   }
   if (context.kind === "admin") {
     return [
+      { label: "Inicio", href: "/admin" },
       { label: "Empresas", href: "/admin/companies" },
       { label: "Auditoría", href: "/admin/audit" },
     ];

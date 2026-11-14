@@ -47,7 +47,7 @@ export function AdminLoginForm() {
         return;
       }
 
-      router.push("/admin/companies");
+      router.push("/admin");
       router.refresh();
     } catch {
       if (signedIn) await authClient.signOut().catch(() => undefined);
