@@ -12,6 +12,7 @@ import {
   companyMember,
   event,
   eventMembership,
+  rafflePrize,
   xpLedger,
 } from "@/db/schema";
 import { dropSession } from "@/db/seed";
@@ -90,6 +91,15 @@ export async function seedDev() {
     startsAt: new Date(now - 60 * 60 * 1000),
     endsAt: new Date(now + 30 * day),
   });
+  // Revealed to whoever completes Demo Day: scanning "Stand de datos" completes it for the demo participant.
+  await db
+    .update(event)
+    .set({ prizeTitle: "Sticker pack digital", prizeDescription: "Código de canje: LYFTER-DEMO-2026" })
+    .where(eq(event.id, eventId));
+  await db
+    .insert(rafflePrize)
+    .values({ id: randomUUID(), eventId, title: "Entrada VIP próximo evento", description: "Válida para dos personas.", quantity: 2 })
+    .onConflictDoNothing();
   // One event per remaining state, so the panel shows all three without editing the database by hand.
   const extraEvents = [
     { slug: "hackathon", name: "Hackathon", status: "DRAFT", startsAt: new Date(now + 20 * day), endsAt: new Date(now + 21 * day), badge: "Demo final" },

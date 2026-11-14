@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { eq, sum } from "drizzle-orm";
+import { and, count, eq, sum } from "drizzle-orm";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
-import { badge, badgeRedemption, event, eventMembership, xpLedger } from "@/db/schema";
+import { badge, badgeRedemption, event, eventCompletion, eventMembership, xpLedger } from "@/db/schema";
 import { extractScanToken } from "@/app/lib/check-in";
 import { getLevelProgress } from "@/app/lib/levels";
 import type { RedeemResult } from "@/app/lib/scan-message";
@@ -12,7 +12,8 @@ import { verifyQrToken } from "@/app/lib/qr-token";
  * Grants a badge and its XP once per signed-in user.
  * The session is the check-in: the badge's event gets a membership in the same
  * transaction, so a welcome scan is not required. A repeated token does not
- * add a second ledger row.
+ * add a second ledger row. Granting the last required badge of the event
+ * records its completion.
  */
 export async function redeemBadge(token: string, userId: string | null): Promise<RedeemResult> {
   const verified = verifyQrToken(extractScanToken(token));
@@ -39,7 +40,9 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       })
       .from(badge)
       .innerJoin(event, eq(badge.eventId, event.id))
-      .where(eq(badge.id, verified.subjectId));
+      .where(eq(badge.id, verified.subjectId))
+      // Redemptions share the lock; the raffle draw's FOR UPDATE waits for the ones in flight.
+      .for("share", { of: event });
 
     if (!row || row.eventStatus !== "ACTIVE" || row.endsAt <= new Date()) {
       return { ok: false, reason: "event_closed" };
@@ -81,6 +84,7 @@ export async function redeemBadge(token: string, userId: string | null): Promise
         xp: row.xp,
         levelUpTo: null,
         totalXpAfter: null,
+        eventCompleted: false,
       };
     }
 
@@ -101,6 +105,26 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       amount: row.xp,
     });
 
+    // The user lock serializes this person's redemptions and the unique index
+    // lets only the first insert return a row, so completion is revealed once.
+    const [progress] = await tx
+      .select({ requiredTotal: count(badge.id), requiredRedeemed: count(badgeRedemption.id) })
+      .from(badge)
+      .leftJoin(
+        badgeRedemption,
+        and(eq(badgeRedemption.badgeId, badge.id), eq(badgeRedemption.userId, userId)),
+      )
+      .where(and(eq(badge.eventId, row.eventId), eq(badge.required, true)));
+    let eventCompleted = false;
+    if (progress.requiredTotal > 0 && progress.requiredRedeemed === progress.requiredTotal) {
+      const completion = await tx
+        .insert(eventCompletion)
+        .values({ id: randomUUID(), eventId: row.eventId, userId })
+        .onConflictDoNothing({ target: [eventCompletion.userId, eventCompletion.eventId] })
+        .returning({ id: eventCompletion.id });
+      eventCompleted = completion.length > 0;
+    }
+
     return {
       ok: true,
       outcome: "granted",
@@ -110,6 +134,7 @@ export async function redeemBadge(token: string, userId: string | null): Promise
       xp: row.xp,
       levelUpTo: levelAfter > previousLevel ? levelAfter : null,
       totalXpAfter,
+      eventCompleted,
     };
   });
 }

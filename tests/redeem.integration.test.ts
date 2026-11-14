@@ -5,7 +5,7 @@ import { redeemBadge } from "@/app/lib/redeem";
 import { QR_GRACE_WINDOWS, QR_WINDOW_SECONDS, signQrToken } from "@/app/lib/qr-token";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
-import { badge, badgeRedemption, company, event, eventMembership, xpLedger } from "@/db/schema";
+import { badge, badgeRedemption, company, event, eventCompletion, eventMembership, xpLedger } from "@/db/schema";
 import { postAuth, requireTestEnv, uniqueEmail } from "./helpers";
 
 const password = "integration-test-password";
@@ -35,16 +35,16 @@ async function openEvent() {
   return eventId;
 }
 
-async function addBadge(eventId: string, xp = 100) {
+async function addBadge(eventId: string, xp = 100, { name = "Stand QR", required = true } = {}) {
   const badgeId = randomUUID();
   await db.insert(badge).values({
     id: badgeId,
     eventId,
-    name: "Stand QR",
+    name,
     type: "stand",
     rarity: "common",
     xp,
-    required: true,
+    required,
   });
   return badgeId;
 }
@@ -101,8 +101,16 @@ describe("badge redemption", () => {
       xp: 250,
       levelUpTo: 3,
       totalXpAfter: 250,
+      eventCompleted: true,
     });
-    expect(second).toMatchObject({ ok: true, outcome: "already_redeemed", xp: 250, levelUpTo: null, totalXpAfter: null });
+    expect(second).toMatchObject({
+      ok: true,
+      outcome: "already_redeemed",
+      xp: 250,
+      levelUpTo: null,
+      totalXpAfter: null,
+      eventCompleted: false,
+    });
     expect(redemptions).toHaveLength(1);
     expect(forThisBadge).toEqual([expect.objectContaining({ amount: 250 })]);
   });
@@ -131,6 +139,7 @@ describe("badge redemption", () => {
       xp: 40,
       levelUpTo: null,
       totalXpAfter: 40,
+      eventCompleted: true,
     });
     expect(mine).toHaveLength(1);
     expect(redemptions).toHaveLength(1);
@@ -149,6 +158,48 @@ describe("badge redemption", () => {
 
     expect(results.every((result) => result.ok && result.outcome === "granted")).toBe(true);
     expect(results.filter((result) => result.ok && result.levelUpTo !== null).map((result) => result.ok && result.levelUpTo)).toEqual([2]);
+  });
+
+  it("completa el evento con el último requerido, sin contar los opcionales, y lo revela una vez", async () => {
+    const eventId = await openEvent();
+    const first = await addBadge(eventId, 10, { name: "Primero" });
+    const last = await addBadge(eventId, 10, { name: "Último" });
+    const optional = await addBadge(eventId, 10, { name: "Opcional", required: false });
+    const redeem = (badgeId: string) => redeemBadge(signQrToken({ kind: "badge", subjectId: badgeId }), userId);
+
+    await expect(redeem(first)).resolves.toMatchObject({ outcome: "granted", eventCompleted: false });
+    await expect(redeem(optional)).resolves.toMatchObject({ outcome: "granted", eventCompleted: false });
+    await expect(redeem(last)).resolves.toMatchObject({ outcome: "granted", eventCompleted: true });
+    await expect(redeem(last)).resolves.toMatchObject({ outcome: "already_redeemed", eventCompleted: false });
+    await expect(db.select().from(eventCompletion).where(eq(eventCompletion.eventId, eventId))).resolves.toEqual([
+      expect.objectContaining({ userId, claimedAt: null }),
+    ]);
+  });
+
+  it("no completa un evento sin badges requeridos", async () => {
+    const eventId = await openEvent();
+    const optional = await addBadge(eventId, 10, { required: false });
+
+    await expect(redeemBadge(signQrToken({ kind: "badge", subjectId: optional }), userId)).resolves.toMatchObject({
+      outcome: "granted",
+      eventCompleted: false,
+    });
+    await expect(db.select().from(eventCompletion).where(eq(eventCompletion.eventId, eventId))).resolves.toHaveLength(0);
+  });
+
+  it("revela la completitud una sola vez cuando los dos últimos requeridos se canjean en paralelo", async () => {
+    const eventId = await openEvent();
+    const badgeA = await addBadge(eventId, 10, { name: "A" });
+    const badgeB = await addBadge(eventId, 10, { name: "B" });
+
+    const results = await Promise.all([
+      redeemBadge(signQrToken({ kind: "badge", subjectId: badgeA }), eventUserId),
+      redeemBadge(signQrToken({ kind: "badge", subjectId: badgeB }), eventUserId),
+    ]);
+
+    expect(results.every((result) => result.ok && result.outcome === "granted")).toBe(true);
+    expect(results.filter((result) => result.ok && result.eventCompleted)).toHaveLength(1);
+    await expect(db.select().from(eventCompletion).where(eq(eventCompletion.eventId, eventId))).resolves.toHaveLength(1);
   });
 
   it("rechaza un QR vencido sin escribir", async () => {

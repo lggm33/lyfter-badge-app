@@ -4,7 +4,7 @@ import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { assertLocalDatabase } from "@/db/local-only";
 import { DEV_ADMIN_EMAIL, DEV_PARTICIPANT_EMAIL, seedDev } from "@/db/seed-dev";
-import { badge, company, event, xpLedger } from "@/db/schema";
+import { badge, company, event, rafflePrize, xpLedger } from "@/db/schema";
 import { requireTestEnv } from "./helpers";
 
 describe("dev seed", () => {
@@ -36,6 +36,11 @@ describe("dev seed", () => {
 
     expect(Number(xp.total)).toBe(150);
     expect(badges).toHaveLength(4);
+    await expect(db.select({ prizeTitle: event.prizeTitle }).from(event).where(eq(event.id, eventId))).resolves.toEqual([
+      { prizeTitle: "Sticker pack digital" },
+    ]);
+
+    await expect(db.select({ id: rafflePrize.id }).from(rafflePrize).where(eq(rafflePrize.eventId, eventId))).resolves.toHaveLength(1);
 
     const statuses = await db
       .select({ status: event.status })

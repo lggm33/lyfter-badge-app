@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/app/lib/authz";
 import { ScanLink } from "@/app/(protected)/badges/event-history";
+import { getLeaderboardPosition } from "@/app/lib/leaderboard";
 import { getLevelProgress, XP_PER_LEVEL } from "@/app/lib/levels";
 import { listMyCollection, listMyCompanies } from "./actions";
 import { MyCompanies } from "./my-companies";
@@ -13,6 +14,7 @@ export default async function HomePage({
   const session = await requireSession();
   const companies = await listMyCompanies();
   const collection = await listMyCollection();
+  const ranking = await getLeaderboardPosition({ eventId: null, sort: "xp", userId: session.user.id });
   const notice = welcomeNotice(searchParams ? await searchParams : {});
   const progress = getLevelProgress(collection.totalXp);
 
@@ -51,6 +53,9 @@ export default async function HomePage({
         <p className="mt-2 text-sm text-slate-600">
           {progress.xpToNextLevel} XP para llegar al nivel {progress.level + 1}
         </p>
+        <Link className="mt-3 inline-flex text-sm font-bold text-slate-800 underline" href="/leaderboard">
+          {ranking ? `Puesto #${ranking.position} global` : "Todavía no estás en el ranking"}
+        </Link>
         {collection.events.length === 0 && <ScanLink label="Registrar tu primer evento" />}
       </section>
       <MyCompanies companies={companies} />

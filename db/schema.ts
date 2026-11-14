@@ -1,4 +1,5 @@
-import { boolean, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "@/auth-schema";
 
 export const company = pgTable("company", {
@@ -45,6 +46,9 @@ export const event = pgTable(
     startsAt: timestamp("starts_at").notNull(),
     endsAt: timestamp("ends_at").notNull(),
     status: text("status").notNull().default("DRAFT"),
+    prizeTitle: text("prize_title"), // null = no general prize
+    prizeDescription: text("prize_description"),
+    raffleDrawnAt: timestamp("raffle_drawn_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -105,7 +109,66 @@ export const badgeRedemption = pgTable(
   },
   (table) => [
     uniqueIndex("badge_redemption_user_badge_idx").on(table.userId, table.badgeId),
+    index("badge_redemption_event_idx").on(table.eventId),
   ],
+);
+
+export const eventCompletion = pgTable(
+  "event_completion",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    completedAt: timestamp("completed_at").defaultNow().notNull(),
+    claimedAt: timestamp("claimed_at"),
+  },
+  (table) => [
+    uniqueIndex("event_completion_user_event_idx").on(table.userId, table.eventId),
+    index("event_completion_event_idx").on(table.eventId),
+  ],
+);
+
+export const rafflePrize = pgTable(
+  "raffle_prize",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    description: text("description"),
+    quantity: integer("quantity").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    uniqueIndex("raffle_prize_event_title_idx").on(table.eventId, table.title),
+    check("raffle_prize_quantity_positive", sql`${table.quantity} > 0`),
+  ],
+);
+
+export const raffleWin = pgTable(
+  "raffle_win",
+  {
+    id: text("id").primaryKey(),
+    rafflePrizeId: text("raffle_prize_id")
+      .notNull()
+      .references(() => rafflePrize.id, { onDelete: "cascade" }),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    claimedAt: timestamp("claimed_at"),
+  },
+  // One prize per person per event.
+  (table) => [uniqueIndex("raffle_win_event_user_idx").on(table.eventId, table.userId)],
 );
 
 export const xpLedger = pgTable("xp_ledger", {

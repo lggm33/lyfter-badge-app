@@ -1,14 +1,15 @@
 "use server";
 
-import { asc, and, desc, eq, exists, isNull, lte } from "drizzle-orm";
+import { asc, and, count, desc, eq, exists, isNull, lte, not, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
-import { requireCompanyMembership } from "@/app/lib/authz";
+import { requireCompanyAccess, requireCompanyMembership } from "@/app/lib/authz";
 import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
 import type { QrDisplay } from "@/app/lib/qr-display";
+import { user } from "@/auth-schema";
 import { db } from "@/db";
-import { badge, company, event, qrDisplay } from "@/db/schema";
+import { badge, company, event, eventCompletion, qrDisplay, rafflePrize, raffleWin } from "@/db/schema";
 
 export type { QrDisplay } from "@/app/lib/qr-display";
 
@@ -119,8 +120,22 @@ export async function listMyCompanyEvents(companyId: string) {
     .set({ status: "FINISHED", updatedAt: new Date() })
     .where(and(eq(event.companyId, companyId), eq(event.status, "ACTIVE"), lte(event.endsAt, new Date())));
   const rows = await db.select().from(event).where(eq(event.companyId, companyId)).orderBy(asc(event.startsAt));
+  const completions = await db
+    .select({ eventId: eventCompletion.eventId, completed: count(), claimed: count(eventCompletion.claimedAt) })
+    .from(eventCompletion)
+    .innerJoin(event, eq(eventCompletion.eventId, event.id))
+    .where(eq(event.companyId, companyId))
+    .groupBy(eventCompletion.eventId);
+  const completionsByEvent = new Map(completions.map((row) => [row.eventId, row]));
   const now = Date.now();
-  return rows.map((row) => ({ ...row, canActivate: row.status === "DRAFT" && now >= row.startsAt.getTime() - 24 * 60 * 60 * 1000 && now < row.endsAt.getTime() }));
+  return rows.map((row) => ({
+    ...row,
+    canActivate: row.status === "DRAFT" && now >= row.startsAt.getTime() - 24 * 60 * 60 * 1000 && now < row.endsAt.getTime(),
+    prizeEditable: isOpenForPrizeEdits(row, now),
+    canDrawRaffle: row.raffleDrawnAt === null && row.endsAt.getTime() <= now,
+    completedCount: completionsByEvent.get(row.id)?.completed ?? 0,
+    claimedCount: completionsByEvent.get(row.id)?.claimed ?? 0,
+  }));
 }
 
 export async function createEvent(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
@@ -161,9 +176,23 @@ export async function activateEvent(formData: FormData) {
   const now = Date.now();
   if (now < current.startsAt.getTime() - 24 * 60 * 60 * 1000) throw new Error("El evento solo se puede activar durante las 24 horas previas.");
   if (now >= current.endsAt.getTime()) throw new Error("No se puede activar un evento ya finalizado.");
-  // The badge check lives in the UPDATE so a badge deleted meanwhile cannot leave an active event with none.
-  const [activated] = await db.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"), exists(db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId))))).returning({ id: event.id });
-  if (!activated) throw new Error("Agregá al menos un badge antes de activar el evento.");
+  // The badge checks live in the UPDATE so a badge deleted meanwhile cannot leave an active event with none.
+  // With a prize or a raffle, nobody can complete the event unless one badge is required.
+  const eventBadges = db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId));
+  const requiredBadges = db.select({ id: badge.id }).from(badge).where(and(eq(badge.eventId, eventId), eq(badge.required, true)));
+  const raffleEntries = db.select({ id: rafflePrize.id }).from(rafflePrize).where(eq(rafflePrize.eventId, eventId));
+  const [activated] = await db.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(
+    eq(event.id, eventId),
+    eq(event.companyId, companyId),
+    eq(event.status, "DRAFT"),
+    exists(eventBadges),
+    or(exists(requiredBadges), and(isNull(event.prizeTitle), not(exists(raffleEntries)))),
+  )).returning({ id: event.id });
+  if (!activated) {
+    const [hasBadge] = await eventBadges.limit(1);
+    if (!hasBadge) throw new Error("Agregá al menos un badge antes de activar el evento.");
+    throw new Error("Un evento con premio o rifa necesita al menos un badge requerido para activarse.");
+  }
   redirect(`/company/${companyId}`);
 }
 
@@ -173,6 +202,145 @@ export async function deleteEvent(formData: FormData) {
   await requireCompanyMembership(companyId);
   await db.delete(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT")));
   redirect(`/company/${companyId}`);
+}
+
+/** Closed means FINISHED or past endsAt: FINISHED is only written when an admin lists the events, so an expired ACTIVE one counts too. */
+function isOpenForPrizeEdits(row: { status: string; endsAt: Date }, now = Date.now()) {
+  return row.status !== "FINISHED" && row.endsAt.getTime() > now;
+}
+
+/** An empty title removes the general prize. */
+export async function savePrize(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  await requireCompanyAccess(companyId);
+  const failure = await formResult(() => db.transaction(async (tx) => {
+    const title = String(formData.get("prizeTitle") ?? "").trim();
+    const description = String(formData.get("prizeDescription") ?? "").trim();
+    if (title.length > 160) throw new ActionError("El título del premio no puede superar los 160 caracteres.");
+    if (description.length > 1000) throw new ActionError("La descripción del premio no puede superar los 1000 caracteres.");
+
+    const [current] = await tx.select({ status: event.status, endsAt: event.endsAt }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId))).for("update");
+    if (!current) throw new ActionError("El evento no existe.");
+    if (!isOpenForPrizeEdits(current)) throw new ActionError("No se puede editar el premio de un evento cerrado.");
+    if (title) {
+      const [required] = await tx.select({ id: badge.id }).from(badge).where(and(eq(badge.eventId, eventId), eq(badge.required, true))).limit(1);
+      if (!required) throw new ActionError("Agregá al menos un badge requerido antes de guardar un premio.");
+    }
+    await tx.update(event).set({ prizeTitle: title || null, prizeDescription: title ? description || null : null, updatedAt: new Date() }).where(eq(event.id, eventId));
+  }), "No se pudo guardar el premio.");
+  if (failure) return failure;
+  redirect(`/company/${companyId}`);
+}
+
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+/** Locks the event so an edit cannot interleave with the draw, and refuses once the raffle was drawn. */
+async function lockUndrawnRaffle(tx: Tx, companyId: string, eventId: string) {
+  const [current] = await tx.select({ raffleDrawnAt: event.raffleDrawnAt }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId))).for("update");
+  if (!current) throw new ActionError("El evento no existe.");
+  if (current.raffleDrawnAt) throw new ActionError("La rifa ya se sorteó: no se puede modificar.");
+}
+
+function rafflePrizeInput(formData: FormData) {
+  const title = String(formData.get("raffleTitle") ?? "").trim();
+  const description = String(formData.get("raffleDescription") ?? "").trim() || null;
+  const quantity = Number(formData.get("raffleQuantity"));
+
+  if (!title || title.length > 160) throw new ActionError("El título del premio debe tener entre 1 y 160 caracteres.");
+  if (description && description.length > 1000) throw new ActionError("La descripción del premio no puede superar los 1000 caracteres.");
+  if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10000) throw new ActionError("La cantidad debe ser un entero entre 1 y 10000.");
+  return { title, description, quantity };
+}
+
+/** Creates the raffle prize, or edits it when the form carries a `prizeId`. */
+export async function saveRafflePrize(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const prizeId = String(formData.get("prizeId") ?? "");
+  await requireCompanyAccess(companyId);
+  const failure = await formResult(() => db.transaction(async (tx) => {
+    const input = rafflePrizeInput(formData);
+    await lockUndrawnRaffle(tx, companyId, eventId);
+    const [required] = await tx.select({ id: badge.id }).from(badge).where(and(eq(badge.eventId, eventId), eq(badge.required, true))).limit(1);
+    if (!required) throw new ActionError("Agregá al menos un badge requerido antes de guardar un premio de la rifa.");
+    if (!prizeId) {
+      await tx.insert(rafflePrize).values({ id: randomUUID(), eventId, ...input });
+      return;
+    }
+    const [updated] = await tx.update(rafflePrize).set({ ...input, updatedAt: new Date() }).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id });
+    if (!updated) throw new ActionError("El premio no existe.");
+  }), "Ya existe un premio con ese título en esta rifa.");
+  if (failure) return failure;
+  redirect(`/company/${companyId}`);
+}
+
+export async function deleteRafflePrize(formData: FormData) {
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const prizeId = String(formData.get("prizeId") ?? "");
+  await requireCompanyAccess(companyId);
+  await db.transaction(async (tx) => {
+    await lockUndrawnRaffle(tx, companyId, eventId);
+    await tx.delete(rafflePrize).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId)));
+  });
+  redirect(`/company/${companyId}`);
+}
+
+/**
+ * Draws the raffle once, after the event ends, among the people who completed it.
+ * The FOR UPDATE on the event waits for the redemptions in flight (they hold FOR SHARE),
+ * so a completion that commits late still enters the draw.
+ */
+export async function drawRaffle(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  await requireCompanyAccess(companyId);
+  const failure = await formResult(() => db.transaction(async (tx) => {
+    const [current] = await tx.select({ endsAt: event.endsAt, raffleDrawnAt: event.raffleDrawnAt }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId))).for("update");
+    if (!current) throw new ActionError("El evento no existe.");
+    if (current.raffleDrawnAt) throw new ActionError("La rifa ya se sorteó.");
+    if (current.endsAt > new Date()) throw new ActionError("La rifa se puede sortear cuando termina el evento.");
+    const prizes = await tx.select().from(rafflePrize).where(eq(rafflePrize.eventId, eventId)).orderBy(asc(rafflePrize.createdAt), asc(rafflePrize.id));
+    if (prizes.length === 0) throw new ActionError("Cargá al menos un premio antes de sortear.");
+
+    const participants = await tx.select({ userId: eventCompletion.userId }).from(eventCompletion).where(eq(eventCompletion.eventId, eventId)).orderBy(sql`random()`);
+    // Each person appears once in the shuffled list, so each wins at most one unit; leftover units stay unassigned.
+    const wins: (typeof raffleWin.$inferInsert)[] = [];
+    for (const prize of prizes) {
+      for (let unit = 0; unit < prize.quantity && wins.length < participants.length; unit++) {
+        wins.push({ id: randomUUID(), rafflePrizeId: prize.id, eventId, userId: participants[wins.length].userId });
+      }
+    }
+    if (wins.length > 0) await tx.insert(raffleWin).values(wins);
+    await tx.update(event).set({ raffleDrawnAt: new Date(), updatedAt: new Date() }).where(eq(event.id, eventId));
+  }), "No se pudo sortear la rifa.");
+  if (failure) return failure;
+  redirect(`/company/${companyId}`);
+}
+
+export async function listEventRaffle(companyId: string, eventId: string) {
+  await companyEvent(companyId, eventId);
+  const [prizes, winners] = await Promise.all([
+    db
+      .select({ id: rafflePrize.id, title: rafflePrize.title, description: rafflePrize.description, quantity: rafflePrize.quantity, assigned: count(raffleWin.id) })
+      .from(rafflePrize)
+      .leftJoin(raffleWin, eq(raffleWin.rafflePrizeId, rafflePrize.id))
+      .where(eq(rafflePrize.eventId, eventId))
+      .groupBy(rafflePrize.id)
+      .orderBy(asc(rafflePrize.title)),
+    db
+      .select({ id: raffleWin.id, prizeTitle: rafflePrize.title, userName: user.name, claimedAt: raffleWin.claimedAt })
+      .from(raffleWin)
+      .innerJoin(rafflePrize, eq(raffleWin.rafflePrizeId, rafflePrize.id))
+      .innerJoin(user, eq(raffleWin.userId, user.id))
+      .where(eq(raffleWin.eventId, eventId))
+      .orderBy(asc(rafflePrize.title), asc(user.name)),
+  ]);
+  return { prizes, winners };
 }
 
 const badgeTypes = ["CONTENT", "TALK", "STAND"] as const;

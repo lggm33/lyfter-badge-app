@@ -14,6 +14,7 @@ describe("destinationAfterScan", () => {
         xp: 100,
         levelUpTo: 2,
         totalXpAfter: 100,
+        eventCompleted: false,
       }),
     ).toBe("/badge/badge-1?fresh=1&levelUpTo=2&totalXp=100");
   });
@@ -30,7 +31,25 @@ describe("destinationAfterScan", () => {
         xp: 25,
         levelUpTo: null,
         totalXpAfter: 25,
+        eventCompleted: false,
       }),
     ).toBe("/badge/badge-1?fresh=1");
+  });
+
+  it("flags the completed event without carrying any prize data", () => {
+    expect(
+      destinationAfterScan({
+        flow: "redeem",
+        ok: true,
+        outcome: "granted",
+        badgeId: "badge-1",
+        badgeName: "Stand",
+        eventName: "Demo Day",
+        xp: 25,
+        levelUpTo: null,
+        totalXpAfter: 25,
+        eventCompleted: true,
+      }),
+    ).toBe("/badge/badge-1?fresh=1&completed=1");
   });
 });

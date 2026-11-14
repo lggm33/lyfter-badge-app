@@ -13,7 +13,7 @@ vi.mock("next/navigation", () => ({
 import { getMyBadge, listMyCollection } from "@/app/(protected)/home/actions";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
-import { badge, badgeRedemption, company, event, eventMembership, xpLedger } from "@/db/schema";
+import { badge, badgeRedemption, company, event, eventCompletion, eventMembership, xpLedger } from "@/db/schema";
 import { cookieHeader, postAuth, requireTestEnv, uniqueEmail } from "./helpers";
 
 const password = "integration-test-password";
@@ -127,6 +127,7 @@ describe("participant collection", () => {
         amount: 15,
       },
     ]);
+    await db.insert(eventCompletion).values({ id: randomUUID(), eventId, userId: ownerId });
   });
 
   afterAll(async () => {
@@ -145,6 +146,9 @@ describe("participant collection", () => {
     expect(collection.events[0]).toMatchObject({
       eventName: "Demo Day",
       xp: 55,
+      requiredTotal: 2,
+      requiredRedeemed: 2,
+      completed: true,
       badges: [
         { redemptionId, badgeId, name: "Stand QR", icon: "★", xp: 40 },
         { redemptionId: olderRedemptionId, badgeId: olderBadgeId, name: "Talk QR", icon: null, xp: 15 },
@@ -154,6 +158,8 @@ describe("participant collection", () => {
       eventId: emptyEventId,
       eventName: "Open Day",
       xp: 0,
+      requiredTotal: 0,
+      completed: false,
       badges: [],
     });
 
@@ -161,6 +167,8 @@ describe("participant collection", () => {
     await expect(getMyBadge(badgeId)).resolves.toMatchObject({
       name: "Stand QR",
       xp: 40,
+      eventId,
+      eventCompleted: true,
     });
   });
 

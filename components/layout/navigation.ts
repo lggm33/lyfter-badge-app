@@ -16,5 +16,6 @@ export function getNavigationItems(context: ShellContext): NavigationItem[] {
   return [
     { label: "Inicio", href: "/home" },
     { label: "Badges", href: "/badges" },
+    { label: "Ranking", href: "/leaderboard" },
   ];
 }

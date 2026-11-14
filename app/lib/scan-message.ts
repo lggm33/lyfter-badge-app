@@ -9,6 +9,7 @@ export type RedeemSuccess = {
   xp: number;
   levelUpTo: number | null;
   totalXpAfter: number | null;
+  eventCompleted: boolean;
 };
 
 export type RedeemFailure = {
@@ -32,6 +33,7 @@ export function destinationAfterScan(result: ScanResult) {
     params.set("levelUpTo", String(result.levelUpTo));
     params.set("totalXp", String(result.totalXpAfter));
   }
+  if (result.eventCompleted) params.set("completed", "1");
   return `/badge/${result.badgeId}?${params}`;
 }
 

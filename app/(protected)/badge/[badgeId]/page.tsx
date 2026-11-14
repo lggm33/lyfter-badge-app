@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { eventAnchor } from "@/app/(protected)/badges/event-history";
 import { getMyBadge } from "@/app/(protected)/home/actions";
 import { getLevelProgress } from "@/app/lib/levels";
 
@@ -12,6 +13,7 @@ export default async function BadgePage({
     fresh?: string | string[];
     levelUpTo?: string | string[];
     totalXp?: string | string[];
+    completed?: string | string[];
   }>;
 }) {
   const { badgeId } = await params;
@@ -31,6 +33,8 @@ export default async function BadgePage({
     previousXp >= 0 &&
     getLevelProgress(xpAfter).level === reportedLevel &&
     getLevelProgress(previousXp).level < reportedLevel;
+  // The URL only asks for the notice; the completion row decides it.
+  const completed = fresh && firstValue(queryParams.completed) === "1" && earned.eventCompleted;
   const label = `${earned.icon ? `${earned.icon} ` : ""}${earned.name}`;
 
   return (
@@ -49,10 +53,15 @@ export default async function BadgePage({
           ¡Subiste al nivel {reportedLevel}!
         </p>
       )}
+      {completed && (
+        <p className="rounded-2xl bg-[#71ceff]/30 px-4 py-3 font-bold text-slate-800">
+          ¡Completaste {earned.eventName}!
+        </p>
+      )}
       <p className="text-sm text-slate-500">{earned.eventName}</p>
       <Link
         className="rounded-full bg-slate-800 px-7 py-3 text-center font-bold text-white"
-        href="/badges"
+        href={completed ? `/badges#${eventAnchor(earned.eventId)}` : "/badges"}
       >
         Ver mis badges
       </Link>

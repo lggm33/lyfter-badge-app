@@ -1,9 +1,21 @@
 "use server";
 
-import { and, asc, eq, sum } from "drizzle-orm";
+import { and, asc, count, eq, exists, inArray, isNull, sql, sum } from "drizzle-orm";
+import { refresh } from "next/cache";
 import { requireSession } from "@/app/lib/authz";
+import { getEventRewards, type EventRewards } from "@/app/lib/rewards";
 import { db } from "@/db";
-import { badge, badgeRedemption, company, companyMember, event, eventMembership, xpLedger } from "@/db/schema";
+import {
+  badge,
+  badgeRedemption,
+  company,
+  companyMember,
+  event,
+  eventCompletion,
+  eventMembership,
+  raffleWin,
+  xpLedger,
+} from "@/db/schema";
 
 export async function listMyCompanies() {
   const session = await requireSession();
@@ -46,6 +58,7 @@ export async function listMyCollection() {
         eventId: event.id,
         eventName: event.name,
         xp: xpLedger.amount,
+        required: badge.required,
         redeemedAt: badgeRedemption.createdAt,
       })
       .from(badgeRedemption)
@@ -55,10 +68,83 @@ export async function listMyCollection() {
       .where(eq(badgeRedemption.userId, userId)),
   ]);
 
+  const eventIds = [...new Set([...memberships, ...redemptions].map((row) => row.eventId))];
+  const [requiredRows, completionRows, rewards] =
+    eventIds.length === 0
+      ? [[], [], new Map<string, EventRewards>()]
+      : await Promise.all([
+          db
+            .select({ eventId: badge.eventId, total: count() })
+            .from(badge)
+            .where(and(inArray(badge.eventId, eventIds), eq(badge.required, true)))
+            .groupBy(badge.eventId),
+          db
+            .select({ eventId: eventCompletion.eventId })
+            .from(eventCompletion)
+            .where(and(eq(eventCompletion.userId, userId), inArray(eventCompletion.eventId, eventIds))),
+          getEventRewards(userId, eventIds),
+        ]);
+  const events = groupHistory(memberships, redemptions, {
+    requiredTotals: new Map(requiredRows.map((row) => [row.eventId, row.total])),
+    completedEventIds: new Set(completionRows.map((row) => row.eventId)),
+  });
+
   return {
     totalXp: Number(totalRow[0]?.total ?? 0),
-    events: groupHistory(memberships, redemptions),
+    events: events.map((item) => ({
+      ...item,
+      prize: rewards.get(item.eventId)?.prize ?? null,
+      raffle: rewards.get(item.eventId)?.raffle ?? null,
+    })),
   };
+}
+
+/** Self-service claim of the general prize. Claiming twice leaves `claimed_at` as it was. */
+export async function claimPrize(eventId: string) {
+  const session = await requireSession();
+  const userId = session.user.id;
+
+  const claimed = await db
+    .update(eventCompletion)
+    .set({ claimedAt: new Date() })
+    .where(
+      and(
+        eq(eventCompletion.userId, userId),
+        eq(eventCompletion.eventId, eventId),
+        isNull(eventCompletion.claimedAt),
+        exists(db.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), sql`${event.prizeTitle} is not null`))),
+      ),
+    )
+    .returning({ id: eventCompletion.id });
+
+  if (claimed.length === 0) {
+    const [completion] = await db
+      .select({ hasPrize: sql<boolean>`${event.prizeTitle} is not null` })
+      .from(eventCompletion)
+      .innerJoin(event, eq(eventCompletion.eventId, event.id))
+      .where(and(eq(eventCompletion.userId, userId), eq(eventCompletion.eventId, eventId)));
+    if (!completion) throw new Error("Todavía no completaste este evento.");
+    if (!completion.hasPrize) throw new Error("Este evento no tiene premio.");
+  }
+  refresh();
+}
+
+/** Self-service claim of a raffle prize by its winner. Claiming twice leaves `claimed_at` as it was. */
+export async function claimRaffleWin(winId: string) {
+  const session = await requireSession();
+  const userId = session.user.id;
+
+  const claimed = await db
+    .update(raffleWin)
+    .set({ claimedAt: new Date() })
+    .where(and(eq(raffleWin.id, winId), eq(raffleWin.userId, userId), isNull(raffleWin.claimedAt)))
+    .returning({ id: raffleWin.id });
+
+  if (claimed.length === 0) {
+    const [win] = await db.select({ id: raffleWin.id }).from(raffleWin).where(and(eq(raffleWin.id, winId), eq(raffleWin.userId, userId)));
+    if (!win) throw new Error("No ganaste este premio.");
+  }
+  refresh();
 }
 
 export async function getMyBadge(badgeId: string) {
@@ -69,19 +155,27 @@ export async function getMyBadge(badgeId: string) {
         badgeId: badge.id,
         name: badge.name,
         icon: badge.icon,
+        eventId: event.id,
         eventName: event.name,
         xp: xpLedger.amount,
+        completionId: eventCompletion.id,
       })
       .from(badgeRedemption)
       .innerJoin(badge, eq(badgeRedemption.badgeId, badge.id))
       .innerJoin(event, eq(badgeRedemption.eventId, event.id))
       .innerJoin(xpLedger, eq(xpLedger.redemptionId, badgeRedemption.id))
+      .leftJoin(
+        eventCompletion,
+        and(eq(eventCompletion.eventId, event.id), eq(eventCompletion.userId, badgeRedemption.userId)),
+      )
       .where(and(eq(badgeRedemption.userId, session.user.id), eq(badge.id, badgeId))),
     db.select({ total: sum(xpLedger.amount) }).from(xpLedger).where(eq(xpLedger.userId, session.user.id)),
   ]);
 
   const row = rows[0];
-  return row ? { ...row, totalXp: Number(totalRow[0]?.total ?? 0) } : null;
+  if (!row) return null;
+  const { completionId, ...badgeRow } = row;
+  return { ...badgeRow, eventCompleted: completionId !== null, totalXp: Number(totalRow[0]?.total ?? 0) };
 }
 
 type MembershipRow = {
@@ -98,7 +192,13 @@ type RedemptionRow = {
   eventId: string;
   eventName: string;
   xp: number;
+  required: boolean;
   redeemedAt: Date;
+};
+
+type EventProgress = {
+  requiredTotals: Map<string, number>;
+  completedEventIds: Set<string>;
 };
 
 type HistoryBadge = {
@@ -115,10 +215,13 @@ type HistoryEvent = {
   eventName: string;
   xp: number;
   checkedInAt: Date | null;
+  requiredTotal: number;
+  requiredRedeemed: number;
+  completed: boolean;
   badges: HistoryBadge[];
 };
 
-function groupHistory(memberships: MembershipRow[], redemptions: RedemptionRow[]) {
+function groupHistory(memberships: MembershipRow[], redemptions: RedemptionRow[], progress: EventProgress) {
   const byEvent = new Map<string, HistoryEvent>();
 
   for (const membership of memberships) {
@@ -127,6 +230,9 @@ function groupHistory(memberships: MembershipRow[], redemptions: RedemptionRow[]
       eventName: membership.eventName,
       xp: 0,
       checkedInAt: membership.checkedInAt,
+      requiredTotal: 0,
+      requiredRedeemed: 0,
+      completed: false,
       badges: [],
     });
   }
@@ -142,12 +248,15 @@ function groupHistory(memberships: MembershipRow[], redemptions: RedemptionRow[]
       redeemedAt: redemption.redeemedAt,
     });
     current.xp += Number(redemption.xp);
+    if (redemption.required) current.requiredRedeemed += 1;
     byEvent.set(redemption.eventId, current);
   }
 
   const events = [...byEvent.values()];
   for (const item of events) {
     item.badges.sort(byNewestRedemption);
+    item.requiredTotal = progress.requiredTotals.get(item.eventId) ?? 0;
+    item.completed = progress.completedEventIds.has(item.eventId);
   }
   events.sort(byRecentActivity);
   return events;
@@ -159,6 +268,9 @@ function emptyEvent(redemption: RedemptionRow): HistoryEvent {
     eventName: redemption.eventName,
     xp: 0,
     checkedInAt: null,
+    requiredTotal: 0,
+    requiredRedeemed: 0,
+    completed: false,
     badges: [],
   };
 }
