@@ -4,6 +4,7 @@ import { asc, and, count, desc, eq, exists, isNull, lte, not, or, sql } from "dr
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
+import { auditActorName, recordAudit } from "@/app/lib/audit";
 import { requireCompanyAccess, requireCompanyMembership } from "@/app/lib/authz";
 import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
 import type { QrDisplay } from "@/app/lib/qr-display";
@@ -38,7 +39,7 @@ export async function createQrDisplayLink(prev: QrDisplayLinkState, formData: Fo
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const badgeField = String(formData.get("badge") ?? "").trim();
-  await requireCompanyMembership(companyId);
+  const session = await requireCompanyMembership(companyId);
   const now = new Date();
   const [currentEvent] = await db.select().from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
   if (!currentEvent || currentEvent.status !== "ACTIVE" || currentEvent.endsAt <= now) {
@@ -53,7 +54,19 @@ export async function createQrDisplayLink(prev: QrDisplayLinkState, formData: Fo
   const betterAuthUrl = process.env.BETTER_AUTH_URL;
   if (!betterAuthUrl) throw new Error("BETTER_AUTH_URL is not set");
   const { token, hash } = createDisplayToken();
-  await db.insert(qrDisplay).values({ id: randomUUID(), eventId, badgeId, linkTokenHash: hash, expiresAt: currentEvent.endsAt });
+  const displayId = randomUUID();
+  await db.transaction(async (tx) => {
+    await tx.insert(qrDisplay).values({ id: displayId, eventId, badgeId, linkTokenHash: hash, expiresAt: currentEvent.endsAt });
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "display.created",
+      companyId,
+      eventId,
+      resourceType: "display",
+      resourceId: displayId,
+      metadata: { badgeId: badgeId ?? "" },
+    });
+  });
   const url = `${betterAuthUrl}/display/claim/${token}`;
   return { url, qrSvg: await renderQrSvg(url) };
 }
@@ -87,10 +100,26 @@ export async function revokeQrDisplay(formData: FormData): Promise<void> {
   const eventId = String(formData.get("eventId") ?? "");
   const displayId = String(formData.get("displayId") ?? "");
   const badgeField = String(formData.get("badge") ?? "").trim();
-  await requireCompanyMembership(companyId);
+  const session = await requireCompanyMembership(companyId);
   const [currentEvent] = await db.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
   if (currentEvent) {
-    await db.update(qrDisplay).set({ revokedAt: new Date() }).where(and(eq(qrDisplay.id, displayId), eq(qrDisplay.eventId, eventId), isNull(qrDisplay.revokedAt)));
+    await db.transaction(async (tx) => {
+      const [revoked] = await tx
+        .update(qrDisplay)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(qrDisplay.id, displayId), eq(qrDisplay.eventId, eventId), isNull(qrDisplay.revokedAt)))
+        .returning({ id: qrDisplay.id, badgeId: qrDisplay.badgeId });
+      if (!revoked) return;
+      await recordAudit(tx, {
+        ...actorOf(session),
+        action: "display.revoked",
+        companyId,
+        eventId,
+        resourceType: "display",
+        resourceId: revoked.id,
+        metadata: { badgeId: revoked.badgeId ?? "" },
+      });
+    });
   }
   redirect(`/company/${companyId}/events/${eventId}/qr${badgeField ? `?badge=${badgeField}` : ""}`);
 }
@@ -141,11 +170,23 @@ export async function listMyCompanyEvents(companyId: string) {
 export async function createEvent(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
-  await requireCompanyMembership(companyId);
-  const failure = await formResult(
-    () => db.insert(event).values({ id: randomUUID(), companyId, ...eventInput(formData) }),
-    "Ya existe un evento con ese slug en esta empresa.",
-  );
+  const session = await requireCompanyMembership(companyId);
+  const failure = await formResult(async () => {
+    const input = eventInput(formData);
+    const id = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.insert(event).values({ id, companyId, ...input });
+      await recordAudit(tx, {
+        ...actorOf(session),
+        action: "event.created",
+        companyId,
+        eventId: id,
+        resourceType: "event",
+        resourceId: id,
+        metadata: { slug: input.slug },
+      });
+    });
+  }, "Ya existe un evento con ese slug en esta empresa.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
 }
@@ -154,13 +195,25 @@ export async function updateEvent(previousState: ActionState | FormData, maybeFo
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await requireCompanyMembership(companyId);
+  const session = await requireCompanyMembership(companyId);
   const failure = await formResult(async () => {
-    const [current] = await db.select({ status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
-    if (!current) throw new ActionError("El evento no existe.");
-    if (current.status !== "DRAFT") throw new ActionError("No se pueden editar eventos activados.");
-    const [updated] = await db.update(event).set({ ...eventInput(formData), updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"))).returning({ id: event.id });
-    if (!updated) throw new ActionError("El evento no existe.");
+    const input = eventInput(formData);
+    await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+      if (!current) throw new ActionError("El evento no existe.");
+      if (current.status !== "DRAFT") throw new ActionError("No se pueden editar eventos activados.");
+      const [updated] = await tx.update(event).set({ ...input, updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"))).returning({ id: event.id });
+      if (!updated) throw new ActionError("El evento no existe.");
+      await recordAudit(tx, {
+        ...actorOf(session),
+        action: "event.updated",
+        companyId,
+        eventId,
+        resourceType: "event",
+        resourceId: eventId,
+        metadata: { fields: changedFieldList(current, input, ["name", "slug", "description", "location", "startsAt", "endsAt"]) },
+      });
+    });
   }, "Ya existe un evento con ese slug en esta empresa.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -169,7 +222,7 @@ export async function updateEvent(previousState: ActionState | FormData, maybeFo
 export async function activateEvent(formData: FormData) {
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await requireCompanyMembership(companyId);
+  const session = await requireCompanyMembership(companyId);
   const [current] = await db.select().from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
   if (!current) throw new Error("El evento no existe.");
   if (current.status !== "DRAFT") throw new Error("Solo se pueden activar eventos en borrador.");
@@ -181,13 +234,25 @@ export async function activateEvent(formData: FormData) {
   const eventBadges = db.select({ id: badge.id }).from(badge).where(eq(badge.eventId, eventId));
   const requiredBadges = db.select({ id: badge.id }).from(badge).where(and(eq(badge.eventId, eventId), eq(badge.required, true)));
   const raffleEntries = db.select({ id: rafflePrize.id }).from(rafflePrize).where(eq(rafflePrize.eventId, eventId));
-  const [activated] = await db.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(
-    eq(event.id, eventId),
-    eq(event.companyId, companyId),
-    eq(event.status, "DRAFT"),
-    exists(eventBadges),
-    or(exists(requiredBadges), and(isNull(event.prizeTitle), not(exists(raffleEntries)))),
-  )).returning({ id: event.id });
+  const [activated] = await db.transaction(async (tx) => {
+    const [row] = await tx.update(event).set({ status: "ACTIVE", updatedAt: new Date() }).where(and(
+      eq(event.id, eventId),
+      eq(event.companyId, companyId),
+      eq(event.status, "DRAFT"),
+      exists(eventBadges),
+      or(exists(requiredBadges), and(isNull(event.prizeTitle), not(exists(raffleEntries)))),
+    )).returning({ id: event.id });
+    if (!row) return [];
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "event.activated",
+      companyId,
+      eventId,
+      resourceType: "event",
+      resourceId: eventId,
+    });
+    return [row];
+  });
   if (!activated) {
     const [hasBadge] = await eventBadges.limit(1);
     if (!hasBadge) throw new Error("Agregá al menos un badge antes de activar el evento.");
@@ -199,8 +264,20 @@ export async function activateEvent(formData: FormData) {
 export async function deleteEvent(formData: FormData) {
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await requireCompanyMembership(companyId);
-  await db.delete(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT")));
+  const session = await requireCompanyMembership(companyId);
+  await db.transaction(async (tx) => {
+    const [current] = await tx.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT")));
+    if (!current) return;
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "event.deleted",
+      companyId,
+      eventId: current.id,
+      resourceType: "event",
+      resourceId: current.id,
+    });
+    await tx.delete(event).where(eq(event.id, current.id));
+  });
   redirect(`/company/${companyId}`);
 }
 
@@ -214,7 +291,7 @@ export async function savePrize(previousState: ActionState | FormData, maybeForm
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await requireCompanyAccess(companyId);
+  const session = await requireCompanyAccess(companyId);
   const failure = await formResult(() => db.transaction(async (tx) => {
     const title = String(formData.get("prizeTitle") ?? "").trim();
     const description = String(formData.get("prizeDescription") ?? "").trim();
@@ -229,6 +306,15 @@ export async function savePrize(previousState: ActionState | FormData, maybeForm
       if (!required) throw new ActionError("Agregá al menos un badge requerido antes de guardar un premio.");
     }
     await tx.update(event).set({ prizeTitle: title || null, prizeDescription: title ? description || null : null, updatedAt: new Date() }).where(eq(event.id, eventId));
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "prize.saved",
+      companyId,
+      eventId,
+      resourceType: "prize",
+      resourceId: eventId,
+      metadata: title ? { title } : { removed: true },
+    });
   }), "No se pudo guardar el premio.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -260,18 +346,28 @@ export async function saveRafflePrize(previousState: ActionState | FormData, may
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const prizeId = String(formData.get("prizeId") ?? "");
-  await requireCompanyAccess(companyId);
+  const session = await requireCompanyAccess(companyId);
   const failure = await formResult(() => db.transaction(async (tx) => {
     const input = rafflePrizeInput(formData);
     await lockUndrawnRaffle(tx, companyId, eventId);
     const [required] = await tx.select({ id: badge.id }).from(badge).where(and(eq(badge.eventId, eventId), eq(badge.required, true))).limit(1);
     if (!required) throw new ActionError("Agregá al menos un badge requerido antes de guardar un premio de la rifa.");
+    const id = prizeId || randomUUID();
     if (!prizeId) {
-      await tx.insert(rafflePrize).values({ id: randomUUID(), eventId, ...input });
-      return;
+      await tx.insert(rafflePrize).values({ id, eventId, ...input });
+    } else {
+      const [updated] = await tx.update(rafflePrize).set({ ...input, updatedAt: new Date() }).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id });
+      if (!updated) throw new ActionError("El premio no existe.");
     }
-    const [updated] = await tx.update(rafflePrize).set({ ...input, updatedAt: new Date() }).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id });
-    if (!updated) throw new ActionError("El premio no existe.");
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "raffle_prize.saved",
+      companyId,
+      eventId,
+      resourceType: "raffle",
+      resourceId: id,
+      metadata: { title: input.title },
+    });
   }), "Ya existe un premio con ese título en esta rifa.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -281,10 +377,20 @@ export async function deleteRafflePrize(formData: FormData) {
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const prizeId = String(formData.get("prizeId") ?? "");
-  await requireCompanyAccess(companyId);
+  const session = await requireCompanyAccess(companyId);
   await db.transaction(async (tx) => {
     await lockUndrawnRaffle(tx, companyId, eventId);
-    await tx.delete(rafflePrize).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId)));
+    const [removed] = await tx.delete(rafflePrize).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id, title: rafflePrize.title });
+    if (!removed) return;
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "raffle_prize.deleted",
+      companyId,
+      eventId,
+      resourceType: "raffle",
+      resourceId: removed.id,
+      metadata: { title: removed.title },
+    });
   });
   redirect(`/company/${companyId}`);
 }
@@ -298,7 +404,7 @@ export async function drawRaffle(previousState: ActionState | FormData, maybeFor
   const formData = maybeFormData ?? previousState as FormData;
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
-  await requireCompanyAccess(companyId);
+  const session = await requireCompanyAccess(companyId);
   const failure = await formResult(() => db.transaction(async (tx) => {
     const [current] = await tx.select({ endsAt: event.endsAt, raffleDrawnAt: event.raffleDrawnAt }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId))).for("update");
     if (!current) throw new ActionError("El evento no existe.");
@@ -317,6 +423,15 @@ export async function drawRaffle(previousState: ActionState | FormData, maybeFor
     }
     if (wins.length > 0) await tx.insert(raffleWin).values(wins);
     await tx.update(event).set({ raffleDrawnAt: new Date(), updatedAt: new Date() }).where(eq(event.id, eventId));
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "raffle.drawn",
+      companyId,
+      eventId,
+      resourceType: "raffle",
+      resourceId: eventId,
+      metadata: { winners: wins.length },
+    });
   }), "No se pudo sortear la rifa.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -347,11 +462,11 @@ const badgeTypes = ["CONTENT", "TALK", "STAND"] as const;
 const badgeRarities = ["COMMON", "RARE", "EPIC", "LEGENDARY"] as const;
 
 async function companyEvent(companyId: string, eventId: string, draftOnly = false) {
-  await requireCompanyMembership(companyId);
+  const session = await requireCompanyMembership(companyId);
   const [row] = await db.select({ id: event.id, status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
   if (!row) throw new ActionError("El evento no existe.");
   if (draftOnly && row.status !== "DRAFT") throw new ActionError("Solo se pueden modificar badges de eventos en borrador.");
-  return row;
+  return { row, session };
 }
 
 function badgeInput(formData: FormData) {
@@ -380,13 +495,25 @@ export async function createBadge(previousState: ActionState | FormData, maybeFo
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const failure = await formResult(async () => {
-    const current = await companyEvent(companyId, eventId);
+    const { row: current, session } = await companyEvent(companyId, eventId);
     const input = badgeInput(formData);
     // An active event only grows optional badges: a required one would change who already completed it,
     // and editing or deleting badges stays draft-only because redemptions and XP depend on them.
     if (current.status === "FINISHED") throw new ActionError("No se pueden agregar badges a un evento finalizado.");
     if (current.status === "ACTIVE" && input.required) throw new ActionError("En un evento activo solo se pueden agregar badges opcionales.");
-    await db.insert(badge).values({ id: randomUUID(), eventId, ...input });
+    const id = randomUUID();
+    await db.transaction(async (tx) => {
+      await tx.insert(badge).values({ id, eventId, ...input });
+      await recordAudit(tx, {
+        ...actorOf(session),
+        action: "badge.created",
+        companyId,
+        eventId,
+        resourceType: "badge",
+        resourceId: id,
+        metadata: { name: input.name },
+      });
+    });
   }, "Ya existe un badge con ese nombre en este evento.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -398,9 +525,23 @@ export async function updateBadge(previousState: ActionState | FormData, maybeFo
   const eventId = String(formData.get("eventId") ?? "");
   const badgeId = String(formData.get("badgeId") ?? "");
   const failure = await formResult(async () => {
-    await companyEvent(companyId, eventId, true);
-    const [updated] = await db.update(badge).set({ ...badgeInput(formData), updatedAt: new Date() }).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id });
-    if (!updated) throw new ActionError("El badge no existe.");
+    const { session } = await companyEvent(companyId, eventId, true);
+    const input = badgeInput(formData);
+    await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(badge).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId)));
+      if (!current) throw new ActionError("El badge no existe.");
+      const [updated] = await tx.update(badge).set({ ...input, updatedAt: new Date() }).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id });
+      if (!updated) throw new ActionError("El badge no existe.");
+      await recordAudit(tx, {
+        ...actorOf(session),
+        action: "badge.updated",
+        companyId,
+        eventId,
+        resourceType: "badge",
+        resourceId: badgeId,
+        metadata: { name: input.name, fields: changedFieldList(current, input, ["name", "description", "type", "rarity", "icon", "xp", "required"]) },
+      });
+    });
   }, "Ya existe un badge con ese nombre en este evento.");
   if (failure) return failure;
   redirect(`/company/${companyId}`);
@@ -410,7 +551,39 @@ export async function deleteBadge(formData: FormData) {
   const companyId = String(formData.get("companyId") ?? "");
   const eventId = String(formData.get("eventId") ?? "");
   const badgeId = String(formData.get("badgeId") ?? "");
-  await companyEvent(companyId, eventId, true);
-  await db.delete(badge).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId)));
+  const { session } = await companyEvent(companyId, eventId, true);
+  await db.transaction(async (tx) => {
+    const [removed] = await tx.delete(badge).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id, name: badge.name });
+    if (!removed) return;
+    await recordAudit(tx, {
+      ...actorOf(session),
+      action: "badge.deleted",
+      companyId,
+      eventId,
+      resourceType: "badge",
+      resourceId: removed.id,
+      metadata: { name: removed.name },
+    });
+  });
   redirect(`/company/${companyId}`);
+}
+
+function actorOf(session: { user: { id: string; name: string; email?: string | null } }) {
+  return { actorId: session.user.id, actorName: auditActorName(session.user) };
+}
+
+function changedFieldList(before: object, after: object, fields: readonly string[]) {
+  const previous = before as Record<string, unknown>;
+  const next = after as Record<string, unknown>;
+  return fields.filter((field) => !sameFieldValue(previous[field], next[field])).join(",");
+}
+
+function sameFieldValue(left: unknown, right: unknown) {
+  if (left instanceof Date || right instanceof Date) {
+    const leftTime = left instanceof Date ? left.getTime() : Number.NaN;
+    const rightTime = right instanceof Date ? right.getTime() : Number.NaN;
+    return leftTime === rightTime;
+  }
+  if (left == null && right == null) return true;
+  return left === right;
 }

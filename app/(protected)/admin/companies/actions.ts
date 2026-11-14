@@ -3,6 +3,8 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, or, sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
+import { isUniqueViolation } from "@/app/lib/action-error";
+import { auditActorName, recordAudit } from "@/app/lib/audit";
 import { requireRole } from "@/app/lib/authz";
 import { USER_SEARCH_LIMIT, buildUserSearchPattern } from "@/app/lib/user-search";
 import { user } from "@/auth-schema";
@@ -10,7 +12,7 @@ import { db } from "@/db";
 import { company, companyMember } from "@/db/schema";
 
 export async function createCompany(formData: FormData) {
-  await requireRole("SUPER_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
 
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
@@ -23,11 +25,22 @@ export async function createCompany(formData: FormData) {
     throw new Error("El slug solo puede usar minúsculas, números y guiones.");
   }
 
+  const id = randomUUID();
   try {
-    await db.insert(company).values({ id: randomUUID(), name, slug });
+    await db.transaction(async (tx) => {
+      await tx.insert(company).values({ id, name, slug });
+      await recordAudit(tx, {
+        actorId: session.user.id,
+        actorName: auditActorName(session.user),
+        action: "company.created",
+        companyId: id,
+        resourceType: "company",
+        resourceId: id,
+        metadata: { slug },
+      });
+    });
   } catch (error) {
-    const cause = error as { code?: string; cause?: { code?: string } };
-    if (cause.code === "23505" || cause.cause?.code === "23505") {
+    if (isUniqueViolation(error)) {
       throw new Error("Ya existe una empresa con ese slug.");
     }
     throw error;
@@ -117,13 +130,13 @@ export async function searchAssignableUsers(query: string, companyId: string) {
  * El rol global del usuario no cambia; COMPANY_ADMIN vive en la membresía.
  */
 export async function assignCompanyAdmin(formData: FormData) {
-  await requireRole("SUPER_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
 
   const companyId = String(formData.get("companyId") ?? "");
   const userId = String(formData.get("userId") ?? "").trim();
 
   const [target] = await db
-    .select({ id: user.id })
+    .select({ id: user.id, name: user.name })
     .from(user)
     .where(eq(user.id, userId));
 
@@ -132,26 +145,63 @@ export async function assignCompanyAdmin(formData: FormData) {
   }
 
   // Reasignar es idempotente: el unique (company_id, user_id) absorbe el reintento.
-  await db
-    .insert(companyMember)
-    .values({
-      id: randomUUID(),
+  await db.transaction(async (tx) => {
+    const [inserted] = await tx
+      .insert(companyMember)
+      .values({
+        id: randomUUID(),
+        companyId,
+        userId: target.id,
+        role: "COMPANY_ADMIN",
+      })
+      .onConflictDoNothing()
+      .returning({ id: companyMember.id });
+    if (!inserted) return;
+
+    await recordAudit(tx, {
+      actorId: session.user.id,
+      actorName: auditActorName(session.user),
+      action: "company_admin.assigned",
       companyId,
-      userId: target.id,
-      role: "COMPANY_ADMIN",
-    })
-    .onConflictDoNothing();
+      resourceType: "member",
+      resourceId: inserted.id,
+      metadata: { userId: target.id, userName: target.name },
+    });
+  });
 
   redirect(`/admin/companies/${companyId}`);
 }
 
 export async function removeCompanyMember(formData: FormData) {
-  await requireRole("SUPER_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
 
   const companyId = String(formData.get("companyId") ?? "");
   const memberId = String(formData.get("memberId") ?? "");
 
-  await db.delete(companyMember).where(eq(companyMember.id, memberId));
+  await db.transaction(async (tx) => {
+    const [member] = await tx
+      .select({
+        id: companyMember.id,
+        userId: companyMember.userId,
+        companyId: companyMember.companyId,
+        userName: user.name,
+      })
+      .from(companyMember)
+      .innerJoin(user, eq(companyMember.userId, user.id))
+      .where(eq(companyMember.id, memberId));
+    if (!member || member.companyId !== companyId) return;
+
+    await tx.delete(companyMember).where(eq(companyMember.id, member.id));
+    await recordAudit(tx, {
+      actorId: session.user.id,
+      actorName: auditActorName(session.user),
+      action: "company_admin.removed",
+      companyId: member.companyId,
+      resourceType: "member",
+      resourceId: member.id,
+      metadata: { userId: member.userId, userName: member.userName },
+    });
+  });
 
   redirect(`/admin/companies/${companyId}`);
 }

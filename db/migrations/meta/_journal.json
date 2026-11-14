@@ -57,6 +57,13 @@
       "when": 1794204468053,
       "tag": "0007_warm_yellow_claw",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794626653792,
+      "tag": "0008_fluffy_the_fury",
+      "breakpoints": true
     }
   ]
 }

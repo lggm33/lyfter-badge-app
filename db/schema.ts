@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import { user } from "@/auth-schema";
 
 export const company = pgTable("company", {
@@ -89,6 +89,7 @@ export const eventMembership = pgTable(
   },
   (table) => [
     uniqueIndex("event_membership_user_event_idx").on(table.userId, table.eventId),
+    index("event_membership_event_checked_in_idx").on(table.eventId, table.checkedInAt),
   ],
 );
 
@@ -197,3 +198,27 @@ export const qrDisplay = pgTable("qr_display", {
   revokedAt: timestamp("revoked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const auditLog = pgTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id").references(() => user.id, { onDelete: "set null" }),
+    actorName: text("actor_name").notNull(),
+    action: text("action").notNull(),
+    companyId: text("company_id").references(() => company.id, { onDelete: "set null" }),
+    companyName: text("company_name"),
+    eventId: text("event_id").references(() => event.id, { onDelete: "set null" }),
+    eventName: text("event_name"),
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id"),
+    metadata: jsonb("metadata").$type<Record<string, string | number | boolean | null>>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("audit_log_created_at_idx").on(table.createdAt),
+    index("audit_log_company_created_idx").on(table.companyId, table.createdAt),
+    index("audit_log_event_created_idx").on(table.eventId, table.createdAt),
+    index("audit_log_actor_created_idx").on(table.actorId, table.createdAt),
+  ],
+);
