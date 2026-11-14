@@ -24,11 +24,13 @@ export const AUDIT_ACTIONS = [
   "raffle.drawn",
   "display.created",
   "display.revoked",
+  "impersonation.started",
+  "impersonation.stopped",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_RESOURCE_TYPES = ["company", "member", "event", "badge", "prize", "raffle", "display"] as const;
+export const AUDIT_RESOURCE_TYPES = ["company", "member", "event", "badge", "prize", "raffle", "display", "impersonation"] as const;
 
 export type AuditResourceType = (typeof AUDIT_RESOURCE_TYPES)[number];
 
@@ -51,6 +53,8 @@ const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "raffle.drawn": "Rifa sorteada",
   "display.created": "Pantalla creada",
   "display.revoked": "Pantalla revocada",
+  "impersonation.started": "Impersonación iniciada",
+  "impersonation.stopped": "Impersonación terminada",
 };
 
 type AuditExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -149,6 +153,7 @@ export function describeAuditMetadata(metadata: AuditMetadata | null) {
   if (typeof metadata.winners === "number") parts.push(`${metadata.winners} ganadores`);
   if (typeof metadata.badgeId === "string" && metadata.badgeId.length > 0) parts.push("badge");
   if (metadata.badgeId === "") parts.push("check-in");
+  if (metadata.impersonating === true) parts.push("impersonando");
   if (parts.length === 0) return null;
   return parts.join(" · ");
 }

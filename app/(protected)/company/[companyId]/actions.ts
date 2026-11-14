@@ -4,8 +4,8 @@ import { asc, and, count, desc, eq, exists, isNull, lte, not, or, sql } from "dr
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
-import { auditActorName, recordAudit } from "@/app/lib/audit";
-import { requireCompanyAccess, requireCompanyMembership } from "@/app/lib/authz";
+import { auditActorName, recordAudit, type AuditEntry } from "@/app/lib/audit";
+import { isImpersonatingCompany, requireCompanyAccess, requireCompanyMembership } from "@/app/lib/authz";
 import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
 import type { QrDisplay } from "@/app/lib/qr-display";
 import { user } from "@/auth-schema";
@@ -57,8 +57,7 @@ export async function createQrDisplayLink(prev: QrDisplayLinkState, formData: Fo
   const displayId = randomUUID();
   await db.transaction(async (tx) => {
     await tx.insert(qrDisplay).values({ id: displayId, eventId, badgeId, linkTokenHash: hash, expiresAt: currentEvent.endsAt });
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "display.created",
       companyId,
       eventId,
@@ -110,8 +109,7 @@ export async function revokeQrDisplay(formData: FormData): Promise<void> {
         .where(and(eq(qrDisplay.id, displayId), eq(qrDisplay.eventId, eventId), isNull(qrDisplay.revokedAt)))
         .returning({ id: qrDisplay.id, badgeId: qrDisplay.badgeId });
       if (!revoked) return;
-      await recordAudit(tx, {
-        ...actorOf(session),
+      await recordCompanyAudit(tx, session, companyId, {
         action: "display.revoked",
         companyId,
         eventId,
@@ -176,8 +174,7 @@ export async function createEvent(previousState: ActionState | FormData, maybeFo
     const id = randomUUID();
     await db.transaction(async (tx) => {
       await tx.insert(event).values({ id, companyId, ...input });
-      await recordAudit(tx, {
-        ...actorOf(session),
+      await recordCompanyAudit(tx, session, companyId, {
         action: "event.created",
         companyId,
         eventId: id,
@@ -204,8 +201,7 @@ export async function updateEvent(previousState: ActionState | FormData, maybeFo
       if (current.status !== "DRAFT") throw new ActionError("No se pueden editar eventos activados.");
       const [updated] = await tx.update(event).set({ ...input, updatedAt: new Date() }).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT"))).returning({ id: event.id });
       if (!updated) throw new ActionError("El evento no existe.");
-      await recordAudit(tx, {
-        ...actorOf(session),
+      await recordCompanyAudit(tx, session, companyId, {
         action: "event.updated",
         companyId,
         eventId,
@@ -243,8 +239,7 @@ export async function activateEvent(formData: FormData) {
       or(exists(requiredBadges), and(isNull(event.prizeTitle), not(exists(raffleEntries)))),
     )).returning({ id: event.id });
     if (!row) return [];
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "event.activated",
       companyId,
       eventId,
@@ -268,8 +263,7 @@ export async function deleteEvent(formData: FormData) {
   await db.transaction(async (tx) => {
     const [current] = await tx.select({ id: event.id }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId), eq(event.status, "DRAFT")));
     if (!current) return;
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "event.deleted",
       companyId,
       eventId: current.id,
@@ -306,8 +300,7 @@ export async function savePrize(previousState: ActionState | FormData, maybeForm
       if (!required) throw new ActionError("Agregá al menos un badge requerido antes de guardar un premio.");
     }
     await tx.update(event).set({ prizeTitle: title || null, prizeDescription: title ? description || null : null, updatedAt: new Date() }).where(eq(event.id, eventId));
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "prize.saved",
       companyId,
       eventId,
@@ -359,8 +352,7 @@ export async function saveRafflePrize(previousState: ActionState | FormData, may
       const [updated] = await tx.update(rafflePrize).set({ ...input, updatedAt: new Date() }).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id });
       if (!updated) throw new ActionError("El premio no existe.");
     }
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "raffle_prize.saved",
       companyId,
       eventId,
@@ -382,8 +374,7 @@ export async function deleteRafflePrize(formData: FormData) {
     await lockUndrawnRaffle(tx, companyId, eventId);
     const [removed] = await tx.delete(rafflePrize).where(and(eq(rafflePrize.id, prizeId), eq(rafflePrize.eventId, eventId))).returning({ id: rafflePrize.id, title: rafflePrize.title });
     if (!removed) return;
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "raffle_prize.deleted",
       companyId,
       eventId,
@@ -423,8 +414,7 @@ export async function drawRaffle(previousState: ActionState | FormData, maybeFor
     }
     if (wins.length > 0) await tx.insert(raffleWin).values(wins);
     await tx.update(event).set({ raffleDrawnAt: new Date(), updatedAt: new Date() }).where(eq(event.id, eventId));
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "raffle.drawn",
       companyId,
       eventId,
@@ -504,8 +494,7 @@ export async function createBadge(previousState: ActionState | FormData, maybeFo
     const id = randomUUID();
     await db.transaction(async (tx) => {
       await tx.insert(badge).values({ id, eventId, ...input });
-      await recordAudit(tx, {
-        ...actorOf(session),
+      await recordCompanyAudit(tx, session, companyId, {
         action: "badge.created",
         companyId,
         eventId,
@@ -532,8 +521,7 @@ export async function updateBadge(previousState: ActionState | FormData, maybeFo
       if (!current) throw new ActionError("El badge no existe.");
       const [updated] = await tx.update(badge).set({ ...input, updatedAt: new Date() }).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id });
       if (!updated) throw new ActionError("El badge no existe.");
-      await recordAudit(tx, {
-        ...actorOf(session),
+      await recordCompanyAudit(tx, session, companyId, {
         action: "badge.updated",
         companyId,
         eventId,
@@ -555,8 +543,7 @@ export async function deleteBadge(formData: FormData) {
   await db.transaction(async (tx) => {
     const [removed] = await tx.delete(badge).where(and(eq(badge.id, badgeId), eq(badge.eventId, eventId))).returning({ id: badge.id, name: badge.name });
     if (!removed) return;
-    await recordAudit(tx, {
-      ...actorOf(session),
+    await recordCompanyAudit(tx, session, companyId, {
       action: "badge.deleted",
       companyId,
       eventId,
@@ -570,6 +557,24 @@ export async function deleteBadge(formData: FormData) {
 
 function actorOf(session: { user: { id: string; name: string; email?: string | null } }) {
   return { actorId: session.user.id, actorName: auditActorName(session.user) };
+}
+
+async function recordCompanyAudit(
+  tx: Parameters<typeof recordAudit>[0],
+  session: { user: { id: string; name: string; email?: string | null } },
+  companyId: string,
+  entry: Omit<AuditEntry, "actorId" | "actorName">,
+) {
+  const metadata = { ...(entry.metadata ?? {}) };
+  if (await isImpersonatingCompany(session.user.id, companyId)) {
+    metadata.impersonating = true;
+  }
+
+  await recordAudit(tx, {
+    ...entry,
+    ...actorOf(session),
+    metadata: Object.keys(metadata).length > 0 ? metadata : null,
+  });
 }
 
 function changedFieldList(before: object, after: object, fields: readonly string[]) {

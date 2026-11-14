@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/app/lib/auth";
+import { readRequestImpersonation } from "@/app/lib/impersonation";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
 import { companyMember } from "@/db/schema";
@@ -59,8 +60,8 @@ async function hasCompanyMembership(userId: string, companyId: string) {
 }
 
 /**
- * Panel de empresa: sesión + fila en company_member para esa empresa.
- * SUPER_ADMIN no entra por acá; su superficie es /admin.
+ * Panel de empresa: sesión y fila en company_member, o una cookie de
+ * impersonación válida del Super Admin. Sin esa cookie, SUPER_ADMIN no entra.
  */
 export async function requireCompanyMembership(companyId: string) {
   const session = await requireSession();
@@ -69,7 +70,28 @@ export async function requireCompanyMembership(companyId: string) {
     return session;
   }
 
+  if (await isImpersonatingCompany(session.user.id, companyId)) {
+    return session;
+  }
+
   redirect(DENIED);
+}
+
+/**
+ * True only when the signed cookie names this user and this company, the role
+ * is still SUPER_ADMIN, and there is no membership to enter through instead.
+ */
+export async function isImpersonatingCompany(userId: string, companyId: string) {
+  const payload = await readRequestImpersonation();
+  if (!payload || payload.actorId !== userId || payload.companyId !== companyId) {
+    return false;
+  }
+
+  if ((await getGlobalRole(userId)) !== "SUPER_ADMIN") {
+    return false;
+  }
+
+  return !(await hasCompanyMembership(userId, companyId));
 }
 
 /** SUPER_ADMIN entra a cualquier empresa; el resto necesita fila en company_member. */
