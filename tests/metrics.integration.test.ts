@@ -79,6 +79,7 @@ describe("metrics navigation", () => {
     expect(getNavigationItems({ kind: "admin" }).map((item) => item.href)).toEqual([
       "/admin",
       "/admin/companies",
+      "/admin/users",
       "/admin/audit",
     ]);
     expect(getNavigationItems({ kind: "company", companyId: "company-1", companyName: "Acme" }).map((item) => item.href)).toContain(

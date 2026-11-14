@@ -18,6 +18,7 @@ export function getNavigationItems(context: ShellContext): NavigationItem[] {
     return [
       { label: "Inicio", href: "/admin" },
       { label: "Empresas", href: "/admin/companies" },
+      { label: "Usuarios", href: "/admin/users" },
       { label: "Auditoría", href: "/admin/audit" },
     ];
   }
