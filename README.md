@@ -46,7 +46,7 @@ Solo en el environment `production` de GitHub: `PROD_DATABASE_URL` y `VERCEL_TOK
 
 ## Datos de demo
 
-`pnpm db:seed:dev` es idempotente y se niega fuera de localhost. Crea la empresa **Lyfter Demo** con Demo Day activo (se reabre 30 días en cada corrida), Hackathon en borrador y Kickoff finalizado. La contraseña de las dos cuentas es `lyfter-dev-1234`.
+`pnpm db:seed:dev` es idempotente y se niega fuera de localhost. Crea la empresa **Lyfter Demo** con tres eventos en Costa Rica: Demo Day activo y presencial (se reabre 30 días en cada corrida), Hackathon en borrador y virtual, y Kickoff finalizado e híbrido. La contraseña de las dos cuentas es `lyfter-dev-1234`.
 
 - `admin@demo.test`: admin de Lyfter Demo.
 - `participante@demo.test`: con check-in y dos badges canjeados (150 XP, nivel 2). Si escanea **Stand de datos** llega a 200 XP y ve el aviso de subida al nivel 3.
@@ -68,13 +68,16 @@ flowchart LR
   user --> companyMember --> company
   company --> event
   event --> badge
+  event --> eventPhoto
   user --> redemption --> badge
   redemption --> xpLedger
 ```
 
-`user` es la cuenta. `company_member` une una cuenta con una empresa. `event` pertenece a una empresa y tiene país y modalidad. `badge` pertenece a un evento. `badge_redemption` es el canje de un usuario, y de ahí sale una fila de `xp_ledger`.
+`user` es la cuenta. `company_member` une una cuenta con una empresa. `event` pertenece a una empresa y tiene país y modalidad. `event_photo` guarda la URL de cada foto; el archivo está en Vercel Blob. `badge` pertenece a un evento. `badge_redemption` es el canje de un usuario, y de ahí sale una fila de `xp_ledger`.
 
 ## Deploy
+
+La app en producción está en https://lyfter-badge-app-fawn.vercel.app.
 
 En cada pull request y en cada push a `main`, GitHub Actions corre las migraciones desde cero, el lint y los tests contra un Postgres efímero. Un push a `main` que pasa los tests migra la base de Railway y después despliega a Vercel. El código nuevo no arranca contra un schema viejo.
 
