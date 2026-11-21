@@ -26,11 +26,13 @@ export const AUDIT_ACTIONS = [
   "display.revoked",
   "impersonation.started",
   "impersonation.stopped",
+  "photo.created",
+  "photo.deleted",
 ] as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
-export const AUDIT_RESOURCE_TYPES = ["company", "member", "event", "badge", "prize", "raffle", "display", "impersonation"] as const;
+export const AUDIT_RESOURCE_TYPES = ["company", "member", "event", "badge", "prize", "raffle", "display", "impersonation", "photo"] as const;
 
 export type AuditResourceType = (typeof AUDIT_RESOURCE_TYPES)[number];
 
@@ -55,6 +57,8 @@ const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   "display.revoked": "Pantalla revocada",
   "impersonation.started": "Impersonación iniciada",
   "impersonation.stopped": "Impersonación terminada",
+  "photo.created": "Foto agregada",
+  "photo.deleted": "Foto eliminada",
 };
 
 type AuditExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0];

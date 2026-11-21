@@ -43,13 +43,22 @@ async function ensureUser(email: string, name: string) {
 async function upsertEvent(
   companyId: string,
   slug: string,
-  values: { name: string; status: string; startsAt: Date; endsAt: Date; description?: string; location?: string },
+  values: {
+    name: string;
+    status: string;
+    startsAt: Date;
+    endsAt: Date;
+    description?: string;
+    location?: string;
+    country?: string;
+    modality?: string;
+  },
 ) {
-  const { status, startsAt, endsAt } = values;
+  const { status, startsAt, endsAt, country, modality } = values;
   await db
     .insert(event)
     .values({ id: randomUUID(), companyId, slug, ...values })
-    .onConflictDoUpdate({ target: [event.companyId, event.slug], set: { status, startsAt, endsAt } });
+    .onConflictDoUpdate({ target: [event.companyId, event.slug], set: { status, startsAt, endsAt, country, modality } });
   const [{ id }] = await db
     .select({ id: event.id })
     .from(event)
@@ -87,6 +96,8 @@ export async function seedDev() {
     name: "Demo Day",
     description: "Evento de prueba para desarrollo local.",
     location: "Sala principal",
+    country: "Costa Rica",
+    modality: "IN_PERSON",
     status: "ACTIVE",
     startsAt: new Date(now - 60 * 60 * 1000),
     endsAt: new Date(now + 30 * day),
@@ -102,8 +113,8 @@ export async function seedDev() {
     .onConflictDoNothing();
   // One event per remaining state, so the panel shows all three without editing the database by hand.
   const extraEvents = [
-    { slug: "hackathon", name: "Hackathon", status: "DRAFT", startsAt: new Date(now + 20 * day), endsAt: new Date(now + 21 * day), badge: "Demo final" },
-    { slug: "kickoff", name: "Kickoff", status: "FINISHED", startsAt: new Date(now - 60 * day), endsAt: new Date(now - 59 * day), badge: "Bienvenida Kickoff" },
+    { slug: "hackathon", name: "Hackathon", status: "DRAFT", country: "Costa Rica", modality: "VIRTUAL", startsAt: new Date(now + 20 * day), endsAt: new Date(now + 21 * day), badge: "Demo final" },
+    { slug: "kickoff", name: "Kickoff", status: "FINISHED", country: "Costa Rica", modality: "HYBRID", startsAt: new Date(now - 60 * day), endsAt: new Date(now - 59 * day), badge: "Bienvenida Kickoff" },
   ];
   for (const { slug, badge: badgeName, ...values } of extraEvents) {
     const id = await upsertEvent(companyId, slug, values);

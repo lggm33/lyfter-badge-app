@@ -4,6 +4,8 @@ import { asc, and, count, desc, eq, exists, isNull, lte, not, or, sql } from "dr
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
+import { isEventModality } from "@/app/lib/event-modality";
+import { blobStore, removeEventPhoto, storeEventPhoto } from "@/app/lib/event-photos";
 import { auditActorName, recordAudit, type AuditEntry } from "@/app/lib/audit";
 import { isImpersonatingCompany, requireCompanyAccess, requireCompanyMembership } from "@/app/lib/authz";
 import { buildQrDisplay, createDisplayToken, renderQrSvg } from "@/app/lib/qr-display";
@@ -137,7 +139,21 @@ function eventInput(formData: FormData) {
   }
   if (startsAt <= new Date()) throw new ActionError("El evento no puede comenzar en el pasado.");
 
-  return { name, slug, description: String(formData.get("description") ?? "").trim() || null, location: String(formData.get("location") ?? "").trim() || null, startsAt, endsAt };
+  const country = String(formData.get("country") ?? "").trim() || null;
+  if (country && country.length > 80) throw new ActionError("El país no puede superar los 80 caracteres.");
+  const modality = String(formData.get("modality") ?? "");
+  if (!isEventModality(modality)) throw new ActionError("Elegí si el evento es presencial, virtual o híbrido.");
+
+  return {
+    name,
+    slug,
+    description: String(formData.get("description") ?? "").trim() || null,
+    location: String(formData.get("location") ?? "").trim() || null,
+    country,
+    modality,
+    startsAt,
+    endsAt,
+  };
 }
 
 export async function listMyCompanyEvents(companyId: string) {
@@ -207,7 +223,7 @@ export async function updateEvent(previousState: ActionState | FormData, maybeFo
         eventId,
         resourceType: "event",
         resourceId: eventId,
-        metadata: { fields: changedFieldList(current, input, ["name", "slug", "description", "location", "startsAt", "endsAt"]) },
+        metadata: { fields: changedFieldList(current, input, ["name", "slug", "description", "location", "country", "modality", "startsAt", "endsAt"]) },
       });
     });
   }, "Ya existe un evento con ese slug en esta empresa.");
@@ -557,6 +573,59 @@ export async function deleteBadge(formData: FormData) {
 
 function actorOf(session: { user: { id: string; name: string; email?: string | null } }) {
   return { actorId: session.user.id, actorName: auditActorName(session.user) };
+}
+
+export async function uploadEventPhoto(previousState: ActionState | FormData, maybeFormData?: FormData): Promise<ActionState> {
+  const formData = maybeFormData ?? previousState as FormData;
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const session = await requireCompanyMembership(companyId);
+  const failure = await formResult(async () => {
+    const file = formData.get("photo");
+    if (!(file instanceof File) || file.size === 0) throw new ActionError("Elegí una foto.");
+    await storeEventPhoto({
+      companyId,
+      eventId,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+      caption: String(formData.get("alt") ?? "").trim() || null,
+      store: blobStore(),
+      audit: (tx, photoId) => recordPhotoAudit(tx, session, companyId, eventId, photoId, "photo.created"),
+    });
+  }, "No se pudo guardar la foto.");
+  if (failure) return failure;
+  redirect(`/company/${companyId}#eventos`);
+}
+
+export async function deleteEventPhoto(formData: FormData) {
+  const companyId = String(formData.get("companyId") ?? "");
+  const eventId = String(formData.get("eventId") ?? "");
+  const photoId = String(formData.get("photoId") ?? "");
+  const session = await requireCompanyMembership(companyId);
+  await removeEventPhoto({
+    companyId,
+    eventId,
+    photoId,
+    store: blobStore(),
+    audit: (tx, id) => recordPhotoAudit(tx, session, companyId, eventId, id, "photo.deleted"),
+  });
+  redirect(`/company/${companyId}#eventos`);
+}
+
+async function recordPhotoAudit(
+  tx: Parameters<typeof recordAudit>[0],
+  session: { user: { id: string; name: string; email?: string | null } },
+  companyId: string,
+  eventId: string,
+  photoId: string,
+  action: "photo.created" | "photo.deleted",
+) {
+  await recordCompanyAudit(tx, session, companyId, {
+    action,
+    companyId,
+    eventId,
+    resourceType: "photo",
+    resourceId: photoId,
+  });
 }
 
 async function recordCompanyAudit(

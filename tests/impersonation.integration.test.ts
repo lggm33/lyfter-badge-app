@@ -156,6 +156,7 @@ describe("impersonation", () => {
       companyId: targetCompanyId,
       name: "Evento impersonado",
       slug: "evento-impersonado",
+      modality: "VIRTUAL",
       startsAt: hoursFromNow(48),
       endsAt: hoursFromNow(50),
     }))).rejects.toThrow(`REDIRECT:/company/${targetCompanyId}`);

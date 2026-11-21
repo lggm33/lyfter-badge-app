@@ -1,95 +1,81 @@
 # Lyfter Badge App
 
-Plataforma mobile-first para convertir la asistencia a eventos en badges, XP y recompensas.
+Plataforma mobile-first para eventos de Lyfter. Un participante hace check-in, canjea badges con QR, suma XP y puede compartir el badge que obtuvo. Cada empresa administra sus eventos. Un super admin opera la plataforma y entra a una empresa por impersonación.
 
-## Estado actual
+Tres roles:
 
-La fundación está lista: Next.js con App Router, TypeScript, Tailwind CSS y ESLint. La landing inicial usa la identidad visual de Lyfter y no requiere servicios externos.
+- **Participante.** Ve su colección, su nivel y el ranking. Comparte un badge con un link público.
+- **Admin de empresa.** Crea eventos y badges, muestra los QR y sube fotos del evento.
+- **Super admin.** Crea empresas, asigna admins, mira usuarios y la auditoría. Entra al panel de una empresa impersonándola.
 
 ## Requisitos
 
-- Node.js compatible con Next.js 16
+- Node.js 24
 - pnpm 11+
-- Docker (Postgres local)
+- Docker, para el Postgres local
 
 ## Desarrollo local
 
-    cp .env.example .env   # completá los secretos
-    docker compose up -d   # Postgres 17 en localhost:5433 (pnpm dev también lo levanta)
-    pnpm install
-    pnpm db:migrate
-    pnpm db:seed
-    pnpm db:seed:dev       # opcional: empresa, evento y participante de demo
-    pnpm dev
+```
+cp .env.example .env
+docker compose up -d
+pnpm install
+pnpm db:migrate
+pnpm db:seed
+pnpm db:seed:dev
+pnpm dev
+```
 
 Abrí http://localhost:3000.
 
-El contenedor crea dos bases: `lyfter_dev` (la de `.env`, para `pnpm dev`) y
-`lyfter_test` (la de `.env.test`, para `pnpm test`). La DB de Railway es
-producción: solo la usan Vercel y el deploy de GitHub Actions, nunca el `.env`
-local.
+El contenedor crea dos bases en `localhost:5433`: `lyfter_dev` (la de `.env`, para `pnpm dev`) y `lyfter_test` (la de `.env.test`, para `pnpm test`). La base de Railway es producción: solo la usan Vercel y el deploy de GitHub Actions.
 
-`pnpm test` migra `lyfter_test` antes de correr y se niega a arrancar si
-`DATABASE_URL` no apunta a `localhost`. Para empezar de cero:
-`docker compose down -v && docker compose up -d`.
+`pnpm test` migra `lyfter_test` antes de correr y se niega a arrancar si `DATABASE_URL` no apunta a `localhost`. Para empezar de cero: `docker compose down -v && docker compose up -d`.
 
-## Comandos
+## Variables
 
-    pnpm dev          # levanta Postgres (Docker) y el servidor de desarrollo
-    pnpm lint         # validación de ESLint
-    pnpm test         # tests de integración contra lyfter_test (requiere docker compose up)
-    pnpm start        # servidor de producción
-    pnpm db:generate  # genera migraciones desde el schema
-    pnpm db:migrate   # aplica migraciones pendientes
-    pnpm db:seed      # crea/promueve el Super Admin inicial (idempotente)
-    pnpm db:seed:dev  # datos de demo en la DB local (idempotente, se niega fuera de localhost)
+En `.env`, para local:
 
-`pnpm db:seed:dev` crea la empresa **Lyfter Demo** con el evento activo
-**Demo Day**, que vuelve a abrirse por 30 días cada vez que corrés el seed, y
-cuatro badges. Las dos cuentas usan la contraseña `lyfter-dev-1234`:
+- `DATABASE_URL` apunta a `lyfter_dev`.
+- `BETTER_AUTH_SECRET` y `BETTER_AUTH_URL` arman la sesión. La URL también es la base del link para compartir.
+- `QR_SECRET` firma los QR. Cambiarlo invalida los QR que están en pantalla.
+- `BLOB_READ_WRITE_TOKEN` sube las fotos del evento. Sin token, subir muestra un error y no escribe la fila. En producción vive en Vercel, no como secret de GitHub Actions.
+- `SUPER_ADMIN_EMAIL` y `SUPER_ADMIN_PASSWORD` los usa `pnpm db:seed`. Si el email ya existe, solo garantiza el rol; no pisa la contraseña.
 
-- `admin@demo.test`: COMPANY_ADMIN de Lyfter Demo, para ver los QR del evento.
-- `participante@demo.test`: con check-in y dos badges canjeados (150 XP, nivel 2).
-  Si escanea **Stand de datos** llega a 200 XP y ve el aviso de subida al nivel 3.
+Solo en el environment `production` de GitHub: `PROD_DATABASE_URL` y `VERCEL_TOKEN`. El resto de los secretos de runtime está en Vercel.
 
-`pnpm db:seed` lee `SUPER_ADMIN_EMAIL` y `SUPER_ADMIN_PASSWORD` de `.env`. Si el
-email ya existe solo garantiza el rol `SUPER_ADMIN`; nunca pisa la contraseña.
+## Datos de demo
 
-## Estructura actual
+`pnpm db:seed:dev` es idempotente y se niega fuera de localhost. Crea la empresa **Lyfter Demo** con Demo Day activo (se reabre 30 días en cada corrida), Hackathon en borrador y Kickoff finalizado. La contraseña de las dos cuentas es `lyfter-dev-1234`.
 
-    app/
-      globals.css  # estilos globales y paleta Lyfter
-      layout.tsx   # layout raíz y metadata
-      page.tsx     # landing page
-    public/        # assets estáticos
-    mocks/         # referencias visuales del proyecto
+- `admin@demo.test`: admin de Lyfter Demo.
+- `participante@demo.test`: con check-in y dos badges canjeados (150 XP, nivel 2). Si escanea **Stand de datos** llega a 200 XP y ve el aviso de subida al nivel 3.
 
-## Rutas por experiencia
+## Decisiones que el enunciado dejaba abiertas
 
-Cada experiencia tiene su propio espacio. La autorización se valida siempre en
-el servidor; los grupos de rutas solo organizan la navegación.
+- Completar un evento exige los badges marcados como requeridos. Los opcionales suman XP y no bloquean el premio.
+- Escanear un badge sin check-in previo anota la asistencia en la misma transacción. El QR de bienvenida es el del evento, no un tipo de badge.
+- La rareza es `COMMON`, `RARE`, `EPIC` o `LEGENDARY`.
+- El QR de badge y el de check-in rotan cada 30 segundos. No se guardan tokens.
+- El link público muestra nombre, badge, evento y el XP de ese badge. No muestra el email, el XP total ni las fotos.
 
-| Experiencia | Ruta base | Acceso |
-| --- | --- | --- |
-| Participante | `/home`, `/badges`, `/leaderboard` | Usuario autenticado |
-| Check-in y canje | `/scan` | Público. Sin sesión pregunta si ya hay cuenta. El canje abre `/badge/[badgeId]`. |
-| Badge obtenido | `/badge/[badgeId]` | Usuario autenticado que canjeó ese badge. |
-| Administrador de empresa | `/company/[companyId]` | Usuario autenticado con membresía de esa empresa. Un `SUPER_ADMIN` sin membresía no entra. |
-| Login de Super Admin | `/admin/login` | Público; solo permite ingresar a usuarios `SUPER_ADMIN` |
-| Super administrador | `/admin`, `/admin/companies`, `/admin/companies/[companyId]`, `/admin/users`, `/admin/audit` | Usuario autenticado con rol `SUPER_ADMIN` |
+## Datos
 
-Actualmente están disponibles `/home` (con acceso a las empresas del usuario si
-tiene membresías), `/badges` (historial por evento), `/badge/[badgeId]`,
-`/scan` (check-in por QR), `/admin/login`, `/admin/companies`,
-`/admin/companies/[companyId]` (asignar y quitar administradores de empresa) y
-`/company/[companyId]`. Las demás rutas se agregarán junto con sus slices
-funcionales.
+`pnpm db:migrate` aplica, en orden, los SQL de `db/migrations`. No se edita una migración ya aplicada: el cambio siguiente es una migración nueva (`pnpm db:generate`).
 
-## Próximas fases
+```mermaid
+flowchart LR
+  user --> companyMember --> company
+  company --> event
+  event --> badge
+  user --> redemption --> badge
+  redemption --> xpLedger
+```
 
-1. Persistencia con PostgreSQL y Drizzle.
-2. Autenticación y autorización por roles.
-3. Empresas, eventos, badges y estaciones QR.
-4. Check-in, redenciones, XP y leaderboards.
+`user` es la cuenta. `company_member` une una cuenta con una empresa. `event` pertenece a una empresa y tiene país y modalidad. `badge` pertenece a un evento. `badge_redemption` es el canje de un usuario, y de ahí sale una fila de `xp_ledger`.
 
-Los requisitos completos están en Requirements.md.
+## Deploy
+
+En cada pull request y en cada push a `main`, GitHub Actions corre las migraciones desde cero, el lint y los tests contra un Postgres efímero. Un push a `main` que pasa los tests migra la base de Railway y después despliega a Vercel. El código nuevo no arranca contra un schema viejo.
+
+Las migraciones tienen que poder convivir con la versión que todavía está en producción mientras corre el deploy.

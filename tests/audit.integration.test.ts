@@ -160,6 +160,7 @@ describe("audit log", () => {
       companyId: ownedCompanyId,
       name: "Audit Day",
       slug: "audit-day",
+      modality: "IN_PERSON",
       startsAt: hoursFromNow(48),
       endsAt: hoursFromNow(56),
     }))).rejects.toThrow(`REDIRECT:/company/${ownedCompanyId}`);

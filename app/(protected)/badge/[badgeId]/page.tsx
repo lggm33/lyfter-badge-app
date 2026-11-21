@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { eventAnchor } from "@/app/(protected)/badges/event-history";
 import { getMyBadge } from "@/app/(protected)/home/actions";
 import { getLevelProgress } from "@/app/lib/levels";
+import { shareCardText, shareCardUrl } from "@/app/lib/share-badge";
+import { ShareBadgeActions } from "@/components/share-badge-actions";
 
 export default async function BadgePage({
   params,
@@ -59,12 +61,25 @@ export default async function BadgePage({
         </p>
       )}
       <p className="text-sm text-slate-500">{earned.eventName}</p>
-      <Link
-        className="rounded-full bg-slate-800 px-7 py-3 text-center font-bold text-white"
-        href={completed ? `/badges#${eventAnchor(earned.eventId)}` : "/badges"}
-      >
-        Ver mis badges
-      </Link>
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          className="rounded-full bg-slate-800 px-7 py-3 text-center font-bold text-white"
+          href={completed ? `/badges#${eventAnchor(earned.eventId)}` : "/badges"}
+        >
+          Ver mis badges
+        </Link>
+        <ShareBadgeActions
+          text={shareCardText({
+            name: earned.holderName,
+            badgeName: earned.name,
+            icon: earned.icon,
+            eventName: earned.eventName,
+            xp: earned.xp,
+          })}
+          title={earned.name}
+          url={shareCardUrl(earned.redemptionId)}
+        />
+      </div>
     </main>
   );
 }

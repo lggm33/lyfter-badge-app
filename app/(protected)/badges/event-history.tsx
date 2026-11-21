@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { EventPhotoGallery } from "@/components/event-photo-gallery";
 import { claimPrize, claimRaffleWin, type listMyCollection } from "@/app/(protected)/home/actions";
 
 type History = Awaited<ReturnType<typeof listMyCollection>>;
@@ -33,6 +34,10 @@ function EventSection({ event }: { event: History["events"][number] }) {
           <span className="rounded-full bg-[#d798e7]/30 px-3 py-1 text-xs font-bold text-slate-800">Completado</span>
         )}
       </div>
+      {event.place && <p className="text-sm text-slate-500">{event.place}</p>}
+      {event.photos.length > 0 && (
+        <EventPhotoGallery eventId={event.eventId} eventName={event.eventName} photos={event.photos} />
+      )}
       {event.requiredTotal > 0 && <RequiredProgress redeemed={event.requiredRedeemed} total={event.requiredTotal} />}
       {event.prize && <Prize eventId={event.eventId} prize={event.prize} />}
       {event.raffle && <Raffle raffle={event.raffle} />}

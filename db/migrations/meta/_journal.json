@@ -64,6 +64,13 @@
       "when": 1794626653792,
       "tag": "0008_fluffy_the_fury",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794636648464,
+      "tag": "0009_event_country_modality_photos",
+      "breakpoints": true
     }
   ]
 }

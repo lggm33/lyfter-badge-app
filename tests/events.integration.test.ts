@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 const headersMock = vi.hoisted(() => vi.fn());
 const redirectMock = vi.hoisted(() => vi.fn((path: string): never => { throw new Error(`REDIRECT:${path}`); }));
@@ -10,7 +10,7 @@ vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 import { activateEvent, createBadge, createEvent, deleteBadge, listEventBadges, listMyCompanyEvents, updateBadge, updateEvent } from "@/app/(protected)/company/[companyId]/actions";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
-import { badge, company, companyMember, event } from "@/db/schema";
+import { auditLog, badge, company, companyMember, event } from "@/db/schema";
 import { postAuth, requireTestEnv, cookieHeader, uniqueEmail } from "./helpers";
 
 const companyId = randomUUID();
@@ -51,7 +51,7 @@ describe("event actions integration", () => {
 
   it("creates and lists an event for a company member", async () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Demo", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
+    await expect(createEvent(form({ companyId, name: "Demo", slug: "demo", modality: "HYBRID", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(listMyCompanyEvents(companyId)).resolves.toMatchObject([{ name: "Demo", status: "DRAFT" }]);
   });
@@ -60,7 +60,7 @@ describe("event actions integration", () => {
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(createEvent(form({ companyId, name: "Invalid", slug: "invalid", startsAt: hoursFromNow(72), endsAt: hoursFromNow(70) }))).resolves.toMatchObject({ error: "Las fechas del evento no son válidas." });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
-    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toMatchObject({ error: "Ya existe un evento con ese slug en esta empresa." });
+    await expect(createEvent(form({ companyId, name: "Duplicate", slug: "demo", modality: "IN_PERSON", startsAt: hoursFromNow(48), endsAt: hoursFromNow(56) }))).resolves.toMatchObject({ error: "Ya existe un evento con ese slug en esta empresa." });
   });
 
   it("rejects events that start in the past", async () => {
@@ -125,5 +125,58 @@ describe("event actions integration", () => {
     await db.update(event).set({ status: "FINISHED" }).where(eq(event.id, eventId));
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(createBadge(form({ ...fields, name: "Late" }))).resolves.toEqual({ error: "No se pueden agregar badges a un evento finalizado." });
+  });
+
+  it("requires a known modality and keeps a legacy event with none", async () => {
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createEvent(form({
+      companyId,
+      name: "Nowhere",
+      slug: "nowhere",
+      modality: "REMOTE",
+      startsAt: hoursFromNow(48),
+      endsAt: hoursFromNow(56),
+    }))).resolves.toMatchObject({ error: "Elegí si el evento es presencial, virtual o híbrido." });
+
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(createEvent(form({
+      companyId,
+      name: "Long country",
+      slug: "long-country",
+      modality: "IN_PERSON",
+      country: "C".repeat(81),
+      startsAt: hoursFromNow(48),
+      endsAt: hoursFromNow(56),
+    }))).resolves.toMatchObject({ error: "El país no puede superar los 80 caracteres." });
+
+    const legacyId = randomUUID();
+    await db.insert(event).values({
+      id: legacyId,
+      companyId,
+      name: "Legacy",
+      slug: "legacy",
+      startsAt: new Date(Date.now() + 3 * 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + 4 * 60 * 60 * 1000),
+    });
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    const listed = await listMyCompanyEvents(companyId);
+    expect(listed.find((item) => item.id === legacyId)).toMatchObject({ country: null, modality: null });
+
+    headersMock.mockResolvedValueOnce(new Headers({ cookie }));
+    await expect(updateEvent(form({
+      companyId,
+      eventId: legacyId,
+      name: "Legacy",
+      slug: "legacy",
+      modality: "VIRTUAL",
+      country: "Costa Rica",
+      startsAt: hoursFromNow(48),
+      endsAt: hoursFromNow(56),
+    }))).rejects.toThrow(`REDIRECT:/company/${companyId}`);
+
+    await expect(db.select({ country: event.country, modality: event.modality }).from(event).where(eq(event.id, legacyId))).resolves.toEqual([{ country: "Costa Rica", modality: "VIRTUAL" }]);
+    const [updated] = await db.select({ metadata: auditLog.metadata }).from(auditLog).where(and(eq(auditLog.action, "event.updated"), eq(auditLog.resourceId, legacyId)));
+    expect(updated.metadata).toMatchObject({ fields: expect.stringContaining("country") });
+    expect(String(updated.metadata?.fields)).toContain("modality");
   });
 });

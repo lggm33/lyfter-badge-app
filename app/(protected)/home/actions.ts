@@ -3,6 +3,8 @@
 import { and, asc, count, eq, exists, inArray, isNull, sql, sum } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { requireSession } from "@/app/lib/authz";
+import { eventPlaceSummary } from "@/app/lib/event-modality";
+import { listPhotosForEvents } from "@/app/lib/event-photos";
 import { getEventRewards, type EventRewards } from "@/app/lib/rewards";
 import { db } from "@/db";
 import {
@@ -88,14 +90,35 @@ export async function listMyCollection() {
     requiredTotals: new Map(requiredRows.map((row) => [row.eventId, row.total])),
     completedEventIds: new Set(completionRows.map((row) => row.eventId)),
   });
+  const [places, photos] = eventIds.length === 0
+    ? [[], []]
+    : await Promise.all([
+        db
+          .select({ id: event.id, country: event.country, modality: event.modality })
+          .from(event)
+          .where(inArray(event.id, eventIds)),
+        listPhotosForEvents(eventIds),
+      ]);
+  const placeByEvent = new Map(places.map((place) => [place.id, place]));
+  const photosByEvent = new Map<string, typeof photos>();
+  for (const photo of photos) {
+    const current = photosByEvent.get(photo.eventId) ?? [];
+    current.push(photo);
+    photosByEvent.set(photo.eventId, current);
+  }
 
   return {
     totalXp: Number(totalRow[0]?.total ?? 0),
-    events: events.map((item) => ({
-      ...item,
-      prize: rewards.get(item.eventId)?.prize ?? null,
-      raffle: rewards.get(item.eventId)?.raffle ?? null,
-    })),
+    events: events.map((item) => {
+      const place = placeByEvent.get(item.eventId);
+      return {
+        ...item,
+        place: eventPlaceSummary({ country: place?.country ?? null, modality: place?.modality ?? null }),
+        photos: (photosByEvent.get(item.eventId) ?? []).map((photo) => ({ id: photo.id, url: photo.url, alt: photo.alt })),
+        prize: rewards.get(item.eventId)?.prize ?? null,
+        raffle: rewards.get(item.eventId)?.raffle ?? null,
+      };
+    }),
   };
 }
 
@@ -152,6 +175,7 @@ export async function getMyBadge(badgeId: string) {
   const [rows, totalRow] = await Promise.all([
     db
       .select({
+        redemptionId: badgeRedemption.id,
         badgeId: badge.id,
         name: badge.name,
         icon: badge.icon,
@@ -175,7 +199,12 @@ export async function getMyBadge(badgeId: string) {
   const row = rows[0];
   if (!row) return null;
   const { completionId, ...badgeRow } = row;
-  return { ...badgeRow, eventCompleted: completionId !== null, totalXp: Number(totalRow[0]?.total ?? 0) };
+  return {
+    ...badgeRow,
+    holderName: session.user.name,
+    eventCompleted: completionId !== null,
+    totalXp: Number(totalRow[0]?.total ?? 0),
+  };
 }
 
 type MembershipRow = {

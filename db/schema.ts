@@ -43,6 +43,8 @@ export const event = pgTable(
     slug: text("slug").notNull(),
     description: text("description"),
     location: text("location"),
+    country: text("country"),
+    modality: text("modality"),
     startsAt: timestamp("starts_at").notNull(),
     endsAt: timestamp("ends_at").notNull(),
     status: text("status").notNull().default("DRAFT"),
@@ -52,7 +54,28 @@ export const event = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (table) => [uniqueIndex("event_company_slug_idx").on(table.companyId, table.slug)],
+  (table) => [
+    uniqueIndex("event_company_slug_idx").on(table.companyId, table.slug),
+    check(
+      "event_modality_known",
+      sql`${table.modality} IS NULL OR ${table.modality} IN ('IN_PERSON', 'VIRTUAL', 'HYBRID')`,
+    ),
+  ],
+);
+
+export const eventPhoto = pgTable(
+  "event_photo",
+  {
+    id: text("id").primaryKey(),
+    eventId: text("event_id")
+      .notNull()
+      .references(() => event.id, { onDelete: "cascade" }),
+    blobPathname: text("blob_pathname").notNull(),
+    url: text("url").notNull(),
+    alt: text("alt"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("event_photo_event_created_idx").on(table.eventId, table.createdAt)],
 );
 
 export const badge = pgTable(
