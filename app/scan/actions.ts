@@ -4,16 +4,25 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/app/lib/auth";
 import { extractScanToken } from "@/app/lib/check-in";
+import { prepareScanHold, writeScanHoldCookie } from "@/app/lib/scan-hold";
 import { scanToken } from "@/app/lib/scan";
 import { destinationAfterScan, type ScanResult } from "@/app/lib/scan-message";
+import { signOutIfDisabled } from "@/app/lib/user-status";
 
 /** Called by the in-page camera and the paste form, so both can retry the same request. */
 export async function submitScan(rawToken: string): Promise<ScanResult> {
   const token = extractScanToken(rawToken);
   const userId = await currentUserId();
 
+  if (userId && (await signOutIfDisabled(userId))) {
+    return { flow: "checkin", ok: false, reason: "disabled" };
+  }
+
   if (!userId) {
-    redirect(`/scan?t=${encodeURIComponent(token)}`);
+    const prepared = await prepareScanHold(token);
+    if (!prepared.ok) return { flow: "checkin", ok: false, reason: prepared.reason };
+    await writeScanHoldCookie(prepared.cookie);
+    redirect("/scan");
   }
 
   const result = await scanToken(token, userId);

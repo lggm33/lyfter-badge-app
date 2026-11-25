@@ -1,9 +1,11 @@
 "use server";
 
-import { asc, and, count, desc, eq, exists, isNull, lte, not, or, sql } from "drizzle-orm";
+import { asc, and, count, desc, eq, exists, isNull, not, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { ActionError, formResult, type ActionState } from "@/app/lib/action-error";
+import { costaRicaLocalToDate } from "@/app/lib/costa-rica-time";
+import { eventPhase } from "@/app/lib/event-phase";
 import { isEventModality } from "@/app/lib/event-modality";
 import { blobStore, removeEventPhoto, storeEventPhoto } from "@/app/lib/event-photos";
 import { auditActorName, recordAudit, type AuditEntry } from "@/app/lib/audit";
@@ -127,8 +129,8 @@ export async function revokeQrDisplay(formData: FormData): Promise<void> {
 function eventInput(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   const slug = String(formData.get("slug") ?? "").trim().toLowerCase();
-  const startsAt = new Date(String(formData.get("startsAt") ?? ""));
-  const endsAt = new Date(String(formData.get("endsAt") ?? ""));
+  const startsAt = costaRicaLocalToDate(String(formData.get("startsAt") ?? ""));
+  const endsAt = costaRicaLocalToDate(String(formData.get("endsAt") ?? ""));
 
   if (!name || name.length > 160) throw new ActionError("El nombre debe tener entre 1 y 160 caracteres.");
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 100) {
@@ -158,10 +160,6 @@ function eventInput(formData: FormData) {
 
 export async function listMyCompanyEvents(companyId: string) {
   await requireCompanyMembership(companyId);
-  await db
-    .update(event)
-    .set({ status: "FINISHED", updatedAt: new Date() })
-    .where(and(eq(event.companyId, companyId), eq(event.status, "ACTIVE"), lte(event.endsAt, new Date())));
   const rows = await db.select().from(event).where(eq(event.companyId, companyId)).orderBy(asc(event.startsAt));
   const completions = await db
     .select({ eventId: eventCompletion.eventId, completed: count(), claimed: count(eventCompletion.claimedAt) })
@@ -173,6 +171,7 @@ export async function listMyCompanyEvents(companyId: string) {
   const now = Date.now();
   return rows.map((row) => ({
     ...row,
+    status: eventPhase(row, now),
     canActivate: row.status === "DRAFT" && now >= row.startsAt.getTime() - 24 * 60 * 60 * 1000 && now < row.endsAt.getTime(),
     prizeEditable: isOpenForPrizeEdits(row, now),
     canDrawRaffle: row.raffleDrawnAt === null && row.endsAt.getTime() <= now,
@@ -291,9 +290,8 @@ export async function deleteEvent(formData: FormData) {
   redirect(`/company/${companyId}`);
 }
 
-/** Closed means FINISHED or past endsAt: FINISHED is only written when an admin lists the events, so an expired ACTIVE one counts too. */
 function isOpenForPrizeEdits(row: { status: string; endsAt: Date }, now = Date.now()) {
-  return row.status !== "FINISHED" && row.endsAt.getTime() > now;
+  return eventPhase(row, now) !== "FINISHED";
 }
 
 /** An empty title removes the general prize. */
@@ -469,7 +467,7 @@ const badgeRarities = ["COMMON", "RARE", "EPIC", "LEGENDARY"] as const;
 
 async function companyEvent(companyId: string, eventId: string, draftOnly = false) {
   const session = await requireCompanyMembership(companyId);
-  const [row] = await db.select({ id: event.id, status: event.status }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
+  const [row] = await db.select({ id: event.id, status: event.status, endsAt: event.endsAt }).from(event).where(and(eq(event.id, eventId), eq(event.companyId, companyId)));
   if (!row) throw new ActionError("El evento no existe.");
   if (draftOnly && row.status !== "DRAFT") throw new ActionError("Solo se pueden modificar badges de eventos en borrador.");
   return { row, session };
@@ -505,8 +503,9 @@ export async function createBadge(previousState: ActionState | FormData, maybeFo
     const input = badgeInput(formData);
     // An active event only grows optional badges: a required one would change who already completed it,
     // and editing or deleting badges stays draft-only because redemptions and XP depend on them.
-    if (current.status === "FINISHED") throw new ActionError("No se pueden agregar badges a un evento finalizado.");
-    if (current.status === "ACTIVE" && input.required) throw new ActionError("En un evento activo solo se pueden agregar badges opcionales.");
+    const phase = eventPhase(current);
+    if (phase === "FINISHED") throw new ActionError("No se pueden agregar badges a un evento finalizado.");
+    if (phase === "ACTIVE" && input.required) throw new ActionError("En un evento activo solo se pueden agregar badges opcionales.");
     const id = randomUUID();
     await db.transaction(async (tx) => {
       await tx.insert(badge).values({ id, eventId, ...input });

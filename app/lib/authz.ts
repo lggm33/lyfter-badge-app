@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 import { auth } from "@/app/lib/auth";
+import { isUserDisabled } from "@/app/lib/user-status";
 import { readRequestImpersonation } from "@/app/lib/impersonation";
 import { user } from "@/auth-schema";
 import { db } from "@/db";
@@ -16,6 +17,10 @@ export async function requireSession() {
 
   if (!session) {
     redirect("/login");
+  }
+
+  if (await isUserDisabled(session.user.id)) {
+    redirect("/logout-disabled");
   }
 
   return session;

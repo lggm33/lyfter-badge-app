@@ -5,9 +5,11 @@ import { scanNextPath } from "@/app/lib/scan-next";
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string | string[] }>;
+  searchParams: Promise<{ next?: string | string[]; disabled?: string | string[] }>;
 }) {
-  const next = scanNextPath(firstParam((await searchParams).next));
+  const params = await searchParams;
+  const next = scanNextPath(firstParam(params.next));
+  const disabled = firstParam(params.disabled) === "1";
   const registerHref = next === "/home" ? "/register" : `/register?next=${encodeURIComponent(next)}`;
 
   return (
@@ -17,7 +19,7 @@ export default async function LoginPage({
         Entrá para ver tus badges y tu progreso.
       </p>
       <div className="mt-8">
-        <LoginForm redirectTo={next} />
+        <LoginForm disabled={disabled} redirectTo={next} />
       </div>
       <p className="mt-6 text-sm text-slate-600">
         ¿No tenés cuenta?{" "}

@@ -1,9 +1,11 @@
 import { and, eq, sql, type SQL } from "drizzle-orm";
+import { COSTA_RICA_TIME_ZONE } from "@/app/lib/costa-rica-time";
+import { eventPhaseSql } from "@/app/lib/event-phase";
 import { db } from "@/db";
 import { event } from "@/db/schema";
 
 /** Wall-clock hour for “horario de afluencia”. Costa Rica does not observe DST. */
-export const METRICS_TIME_ZONE = "America/Costa_Rica";
+export const METRICS_TIME_ZONE = COSTA_RICA_TIME_ZONE;
 
 export const TOP_METRICS_LIMIT = 10;
 
@@ -159,9 +161,9 @@ async function loadActivity(resolved: ResolvedScope) {
     completions: number;
   }>(sql`
     SELECT
-      (SELECT count(*)::int FROM event e WHERE e.status = 'DRAFT' AND ${eventScope(resolved)}) AS "draftEvents",
-      (SELECT count(*)::int FROM event e WHERE e.status = 'ACTIVE' AND ${eventScope(resolved)}) AS "activeEvents",
-      (SELECT count(*)::int FROM event e WHERE e.status = 'FINISHED' AND ${eventScope(resolved)}) AS "finishedEvents",
+      (SELECT count(*)::int FROM event e WHERE ${eventPhaseSql("e")} = 'DRAFT' AND ${eventScope(resolved)}) AS "draftEvents",
+      (SELECT count(*)::int FROM event e WHERE ${eventPhaseSql("e")} = 'ACTIVE' AND ${eventScope(resolved)}) AS "activeEvents",
+      (SELECT count(*)::int FROM event e WHERE ${eventPhaseSql("e")} = 'FINISHED' AND ${eventScope(resolved)}) AS "finishedEvents",
       (SELECT count(*)::int FROM event_membership m JOIN event e ON e.id = m.event_id WHERE ${eventScope(resolved)}) AS "checkIns",
       (SELECT count(*)::int FROM badge_redemption r JOIN event e ON e.id = r.event_id WHERE ${eventScope(resolved)}) AS "redemptions",
       (SELECT count(*)::int FROM event_completion c JOIN event e ON e.id = c.event_id WHERE ${eventScope(resolved)}) AS "completions"
@@ -224,14 +226,14 @@ async function loadTopEvents(): Promise<TopEvent[]> {
   const result = await db.execute<TopEvent>(sql`
     SELECT e.id AS "eventId",
            e.name,
-           e.status,
+           ${eventPhaseSql("e")} AS status,
            co.id AS "companyId",
            co.name AS "companyName",
            count(m.id)::int AS "checkIns"
     FROM event_membership m
     JOIN event e ON e.id = m.event_id
     JOIN company co ON co.id = e.company_id
-    GROUP BY e.id, e.name, e.status, co.id, co.name
+    GROUP BY e.id, e.name, e.status, e.ends_at, co.id, co.name
     ORDER BY count(m.id) DESC, e.name ASC, e.id ASC
     LIMIT ${TOP_METRICS_LIMIT}
   `);

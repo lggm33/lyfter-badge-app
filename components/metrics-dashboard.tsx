@@ -112,7 +112,7 @@ export function MetricsDashboard({
                     <span className="font-black text-slate-800">{item.name}</span>
                     <span className="mt-1 block text-sm text-slate-500">{item.checkIns} check-ins</span>
                   </p>
-                  <Link className="text-sm font-bold text-slate-700" href={`/company/${attendanceCompanyId}/events/${item.id}/asistencia`}>
+                  <Link className="text-sm font-bold text-slate-700" href={`/company/${attendanceCompanyId}/events/${item.id}/attendance`}>
                     Asistentes
                   </Link>
                 </li>

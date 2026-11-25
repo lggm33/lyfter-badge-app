@@ -202,6 +202,26 @@ describe("badge redemption", () => {
     await expect(db.select().from(eventCompletion).where(eq(eventCompletion.eventId, eventId))).resolves.toHaveLength(1);
   });
 
+  it("rechaza un badge de un evento que todavía no empezó", async () => {
+    const eventId = randomUUID();
+    await db.insert(event).values({
+      id: eventId,
+      companyId,
+      name: "Antes",
+      slug: `antes-${eventId}`,
+      startsAt: new Date(Date.now() + 60 * 60 * 1000),
+      endsAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+      status: "ACTIVE",
+    });
+    const badgeId = await addBadge(eventId, 10, { name: "Temprano" });
+
+    await expect(redeemBadge(signQrToken({ kind: "badge", subjectId: badgeId }), userId)).resolves.toEqual({
+      ok: false,
+      reason: "event_not_started",
+    });
+    await expect(db.select().from(badgeRedemption).where(eq(badgeRedemption.badgeId, badgeId))).resolves.toHaveLength(0);
+  });
+
   it("rechaza un QR vencido sin escribir", async () => {
     const eventId = await openEvent();
     const badgeId = await addBadge(eventId);

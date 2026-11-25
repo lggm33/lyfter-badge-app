@@ -7,6 +7,7 @@ import { extractScanToken } from "@/app/lib/check-in";
 import { getLevelProgress } from "@/app/lib/levels";
 import type { RedeemResult } from "@/app/lib/scan-message";
 import { verifyQrToken } from "@/app/lib/qr-token";
+import { isUserDisabled } from "@/app/lib/user-status";
 
 /**
  * Grants a badge and its XP once per signed-in user.
@@ -27,6 +28,15 @@ export async function redeemBadge(token: string, userId: string | null): Promise
     return { ok: false, reason: "unauthenticated" };
   }
 
+  return grantBadge(verified.subjectId, userId);
+}
+
+/** Grants a badge whose QR was already accepted. The caller skips the QR age. */
+export async function grantBadge(badgeId: string, userId: string): Promise<RedeemResult> {
+  if (await isUserDisabled(userId)) {
+    return { ok: false, reason: "disabled" };
+  }
+
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({
@@ -36,16 +46,21 @@ export async function redeemBadge(token: string, userId: string | null): Promise
         eventId: event.id,
         eventName: event.name,
         eventStatus: event.status,
+        startsAt: event.startsAt,
         endsAt: event.endsAt,
       })
       .from(badge)
       .innerJoin(event, eq(badge.eventId, event.id))
-      .where(eq(badge.id, verified.subjectId))
+      .where(eq(badge.id, badgeId))
       // Redemptions share the lock; the raffle draw's FOR UPDATE waits for the ones in flight.
       .for("share", { of: event });
 
-    if (!row || row.eventStatus !== "ACTIVE" || row.endsAt <= new Date()) {
+    const now = new Date();
+    if (!row || row.eventStatus !== "ACTIVE" || row.endsAt <= now) {
       return { ok: false, reason: "event_closed" };
+    }
+    if (row.startsAt > now) {
+      return { ok: false, reason: "event_not_started" };
     }
 
     await tx.select({ id: user.id }).from(user).where(eq(user.id, userId)).for("update");

@@ -5,6 +5,7 @@ import { event, eventMembership } from "@/db/schema";
 import { verifyQrToken } from "@/app/lib/qr-token";
 import { extractScanToken } from "@/app/lib/scan-token";
 import type { CheckInResult } from "@/app/lib/check-in-message";
+import { isUserDisabled } from "@/app/lib/user-status";
 
 export type { CheckInFailure, CheckInResult, CheckInSuccess } from "@/app/lib/check-in-message";
 export { extractScanToken } from "@/app/lib/scan-token";
@@ -28,13 +29,26 @@ export async function checkIn(token: string, userId: string | null): Promise<Che
     return { ok: false, reason: "unauthenticated" };
   }
 
-  const [openEvent] = await db
-    .select({ id: event.id, name: event.name, status: event.status, endsAt: event.endsAt })
-    .from(event)
-    .where(eq(event.id, verified.subjectId));
+  return checkInEvent(verified.subjectId, userId);
+}
 
-  if (!openEvent || openEvent.status !== "ACTIVE" || openEvent.endsAt <= new Date()) {
+/** Check-in for a subject already accepted at scan time. The caller skips the QR age. */
+export async function checkInEvent(eventId: string, userId: string): Promise<CheckInResult> {
+  if (await isUserDisabled(userId)) {
+    return { ok: false, reason: "disabled" };
+  }
+
+  const now = new Date();
+  const [openEvent] = await db
+    .select({ id: event.id, name: event.name, status: event.status, startsAt: event.startsAt, endsAt: event.endsAt })
+    .from(event)
+    .where(eq(event.id, eventId));
+
+  if (!openEvent || openEvent.status !== "ACTIVE" || openEvent.endsAt <= now) {
     return { ok: false, reason: "event_closed" };
+  }
+  if (openEvent.startsAt > now) {
+    return { ok: false, reason: "event_not_started" };
   }
 
   const inserted = await db

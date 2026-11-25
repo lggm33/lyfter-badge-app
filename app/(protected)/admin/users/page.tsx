@@ -2,6 +2,7 @@ import Form from "next/form";
 import Link from "next/link";
 import { requireRole } from "@/app/lib/authz";
 import { directoryRoleLabel, listUserDirectory, parseDirectoryQuery } from "@/app/lib/user-directory";
+import { setUserDisabled } from "./actions";
 
 type SearchParams = {
   q?: string | string[];
@@ -9,7 +10,7 @@ type SearchParams = {
 };
 
 export default async function AdminUsersPage({ searchParams }: { searchParams?: Promise<SearchParams> } = {}) {
-  await requireRole("SUPER_ADMIN");
+  const session = await requireRole("SUPER_ADMIN");
   const query = parseDirectoryQuery(searchParams ? await searchParams : {});
   const result = await listUserDirectory(query);
 
@@ -18,7 +19,7 @@ export default async function AdminUsersPage({ searchParams }: { searchParams?: 
       <div>
         <p className="text-sm font-bold uppercase tracking-[0.2em] text-[#71ceff]">Super Admin</p>
         <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-800">Usuarios</h1>
-        <p className="mt-3 text-slate-600">Directorio de solo lectura. Desde acá no se edita ni se borra a nadie.</p>
+        <p className="mt-3 text-slate-600">Podés desactivar una cuenta sospechosa. No se borra a nadie: el historial de canjes queda.</p>
       </div>
 
       <Form action="/admin/users" className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -60,7 +61,19 @@ export default async function AdminUsersPage({ searchParams }: { searchParams?: 
                 {directoryRoleLabel(person.role)}
                 {" · "}
                 {person.companies || "Sin empresas"}
+                {person.disabledAt ? " · desactivada" : ""}
               </p>
+              {person.id !== session.user.id && (
+                <form action={setUserDisabled} className="mt-3">
+                  <input type="hidden" name="userId" value={person.id} />
+                  <input type="hidden" name="disabled" value={person.disabledAt ? "0" : "1"} />
+                  <input type="hidden" name="q" value={result.search} />
+                  <input type="hidden" name="page" value={String(result.page)} />
+                  <button className="text-sm font-bold text-slate-700" type="submit">
+                    {person.disabledAt ? "Reactivar" : "Desactivar"}
+                  </button>
+                </form>
+              )}
             </li>
           ))}
         </ul>

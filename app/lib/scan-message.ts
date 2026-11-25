@@ -14,7 +14,7 @@ export type RedeemSuccess = {
 
 export type RedeemFailure = {
   ok: false;
-  reason: "invalid" | "expired" | "event_closed" | "unauthenticated";
+  reason: "invalid" | "expired" | "event_closed" | "event_not_started" | "unauthenticated" | "disabled";
 };
 
 export type RedeemResult = RedeemSuccess | RedeemFailure;
@@ -50,8 +50,14 @@ export function scanMessage(result: ScanResult) {
   if (result.reason === "expired") {
     return "El QR venció. Escaneá el de la pantalla de nuevo.";
   }
+  if (result.reason === "event_not_started") {
+    return "Este evento todavía no empezó.";
+  }
   if (result.reason === "event_closed") {
     return "Este evento no está abierto para canjear badges.";
+  }
+  if (result.reason === "disabled") {
+    return "Tu cuenta está desactivada.";
   }
   if (result.reason === "unauthenticated") {
     return "Entrá a tu cuenta para canjear el badge.";

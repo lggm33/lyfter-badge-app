@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import QRCode from "qrcode";
+import { eventPhase } from "@/app/lib/event-phase";
 import { qrNextRotation, signQrToken } from "@/app/lib/qr-token";
 
 export type QrDisplay =
@@ -24,8 +25,9 @@ export function buildQrDisplay(
   b: { id: string; name: string; icon: string | null } | undefined,
   now: Date,
 ): QrDisplay {
-  if (ev.status !== "ACTIVE" || ev.endsAt <= now) {
-    return { status: "inactive", eventName: ev.name, eventStatus: ev.status };
+  const phase = eventPhase(ev, now.getTime());
+  if (phase !== "ACTIVE") {
+    return { status: "inactive", eventName: ev.name, eventStatus: phase };
   }
   const betterAuthUrl = process.env.BETTER_AUTH_URL;
   if (!betterAuthUrl) throw new Error("BETTER_AUTH_URL is not set");
