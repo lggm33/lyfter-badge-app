@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-function localDateTime() {
-  const now = new Date();
-  const offset = now.getTimezoneOffset() * 60000;
-  return new Date(now.getTime() - offset).toISOString().slice(0, 16);
-}
+import { dateToCostaRicaInput } from "@/app/lib/costa-rica-time";
 
 export function FutureDateTimeInput() {
   const [min, setMin] = useState("");
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setMin(localDateTime()), 0);
+    const timer = window.setTimeout(() => setMin(dateToCostaRicaInput(new Date())), 0);
     return () => window.clearTimeout(timer);
   }, []);
 

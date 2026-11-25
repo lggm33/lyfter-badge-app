@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
   },
 }));
 
-import EventAttendancePage from "@/app/(protected)/company/[companyId]/events/[eventId]/asistencia/page";
+import EventAttendancePage from "@/app/(protected)/company/[companyId]/events/[eventId]/attendance/page";
 import { ATTENDANCE_PAGE_SIZE, getEventAttendance } from "@/app/lib/attendance";
 import { user } from "@/auth-schema";
 import { db } from "@/db";

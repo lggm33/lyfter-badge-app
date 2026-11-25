@@ -1,5 +1,7 @@
-/** Matches the QR tolerance: past it the token has expired anyway, so the person has to scan again. */
-export const SCAN_RETRY_WINDOW_MS = 3 * 60 * 1000;
+import { SCAN_RETRY_WINDOW_MS as TOKEN_RETRY_WINDOW_MS } from "@/app/lib/qr-window";
+
+/** Matches the QR lifetime. Past it the token has expired, so the person scans the screen again. */
+export const SCAN_RETRY_WINDOW_MS = TOKEN_RETRY_WINDOW_MS;
 export const SCAN_RETRY_EVERY_MS = 5_000;
 
 /** The request never got an answer (fetch throws TypeError offline); a server-side failure is not retried. */

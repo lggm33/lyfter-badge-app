@@ -1,9 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { QR_FUTURE_WINDOWS, QR_GRACE_WINDOWS, QR_WINDOW_SECONDS } from "@/app/lib/qr-window";
 
-export const QR_WINDOW_SECONDS = 30;
-// ~3 minutes back covers slow scans and flaky signal; one window ahead covers clock skew between instances.
-export const QR_GRACE_WINDOWS = 5;
-const QR_FUTURE_WINDOWS = 1;
+export { QR_GRACE_WINDOWS, QR_WINDOW_SECONDS };
 
 const QR_KINDS = ["badge", "checkin"] as const;
 export type QrKind = (typeof QR_KINDS)[number];
@@ -11,8 +9,8 @@ export type QrSubject = { kind: QrKind; subjectId: string };
 export type QrVerification = ({ ok: true } & QrSubject) | { ok: false; reason: "invalid" | "expired" };
 
 /**
- * Stateless rotating token: `kind.subjectId.window.hmac`. Nothing is persisted;
- * a token is valid while its window is inside the grace period.
+ * Stateless rotating token: `kind.subjectId.window.hmac`. The token itself is not stored.
+ * It stays valid for the current frame and one frame back.
  * Double redemption is prevented by the (user_id, badge_id) unique, not by the token.
  */
 export function signQrToken(subject: QrSubject, now = new Date(), secret = qrSecret()) {

@@ -161,7 +161,7 @@ describe("metrics", () => {
     expect(companySnapshot.cards.users).toBeNull();
     expect(companySnapshot.topEvents).toBeNull();
     expect(companySnapshot.cards).toMatchObject({
-      events: { draft: 1, active: 1, finished: 0 },
+      events: { draft: 1, active: 0, finished: 1 },
       checkIns: 3,
       redemptions: 4,
       completions: 1,
@@ -178,7 +178,7 @@ describe("metrics", () => {
     expect(ignored.cards).toEqual(companySnapshot.cards);
     expect(focused.eventId).toBe(eventA);
     expect(focused.cards).toMatchObject({
-      events: { draft: 0, active: 1, finished: 0 },
+      events: { draft: 0, active: 0, finished: 1 },
       checkIns: 2,
       redemptions: 3,
       completions: 1,

@@ -6,7 +6,7 @@ Tres roles:
 
 - **Participante.** Ve su colección, su nivel y el ranking. Comparte un badge con un link público.
 - **Admin de empresa.** Crea eventos y badges, muestra los QR y sube fotos del evento.
-- **Super admin.** Crea empresas, asigna admins, mira usuarios y la auditoría. Entra al panel de una empresa impersonándola.
+- **Super admin.** Crea empresas, asigna admins, mira usuarios y puede desactivar una cuenta. Ve la auditoría. Entra al panel de una empresa impersonándola.
 
 ## Requisitos
 
@@ -56,7 +56,13 @@ Solo en el environment `production` de GitHub: `PROD_DATABASE_URL` y `VERCEL_TOK
 - Completar un evento exige los badges marcados como requeridos. Los opcionales suman XP y no bloquean el premio.
 - Escanear un badge sin check-in previo anota la asistencia en la misma transacción. El QR de bienvenida es el del evento, no un tipo de badge.
 - La rareza es `COMMON`, `RARE`, `EPIC` o `LEGENDARY`.
-- El QR de badge y el de check-in rotan cada 30 segundos. No se guardan tokens.
+- El QR de badge y el de check-in rota cada 30 segundos. Vale la ventana vigente y la anterior. El token no se guarda.
+- Si ese request llega sin sesión, se guarda solo el hash de una cookie por 15 minutos. La misma persona termina el check-in o el canje después de entrar. Una captura reenviada no trae la cookie.
+- Si la señal se cae, la página reintenta mientras el token sigue vigente, un minuto. Si el request nunca llegó, hay que escanear de nuevo el QR de la pantalla.
+- Un evento activo antes de su inicio no acepta check-in ni canje. El mensaje dice que todavía no empezó.
+- Las fechas del formulario son hora de Costa Rica, la misma zona del horario de afluencia.
+- Un evento pasado se muestra como finalizado a partir de su cierre. Listar eventos no escribe ese estado.
+- No se borran usuarios: un delete en cascada se llevaría canjes y XP. Desactivar una cuenta le impide entrar y escanear, y deja el historial.
 - El link público muestra nombre, badge, evento y el XP de ese badge. No muestra el email, el XP total ni las fotos.
 
 ## Datos

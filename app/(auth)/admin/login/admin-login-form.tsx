@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { authClient } from "@/app/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
+import { ensureActiveSessionAction } from "@/app/lib/session-actions";
 import { isSuperAdmin } from "./actions";
 
 export function AdminLoginForm() {
@@ -27,6 +28,11 @@ export function AdminLoginForm() {
         return;
       }
       signedIn = true;
+
+      if ((await ensureActiveSessionAction()) === "disabled") {
+        setError("Tu cuenta está desactivada.");
+        return;
+      }
 
       let allowed: boolean;
       try {

@@ -7,7 +7,7 @@ export type CheckInSuccess = {
 
 export type CheckInFailure = {
   ok: false;
-  reason: "invalid" | "expired" | "not_checkin" | "event_closed" | "unauthenticated";
+  reason: "invalid" | "expired" | "not_checkin" | "event_closed" | "event_not_started" | "unauthenticated" | "disabled";
 };
 
 export type CheckInResult = CheckInSuccess | CheckInFailure;
@@ -25,8 +25,14 @@ export function checkInMessage(result: CheckInResult) {
   if (result.reason === "not_checkin") {
     return "Ese QR es de un badge. El canje todavía no está disponible.";
   }
+  if (result.reason === "event_not_started") {
+    return "Este evento todavía no empezó.";
+  }
   if (result.reason === "event_closed") {
     return "Este evento no está abierto para check-in.";
+  }
+  if (result.reason === "disabled") {
+    return "Tu cuenta está desactivada.";
   }
   if (result.reason === "unauthenticated") {
     return "Entrá a tu cuenta para registrar la asistencia.";

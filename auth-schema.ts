@@ -13,6 +13,7 @@ export const user = pgTable("user", {
     .$onUpdate(() => /* @__PURE__ */ new Date())
     .notNull(),
   role: text("role").default("PARTICIPANT").notNull(),
+  disabledAt: timestamp("disabled_at"),
 });
 
 export const session = pgTable(

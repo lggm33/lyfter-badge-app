@@ -16,6 +16,7 @@ export type DirectoryRow = {
   role: string;
   companies: string;
   createdAt: Date;
+  disabledAt: Date | null;
 };
 
 export type DirectoryPage = {
@@ -29,7 +30,7 @@ export type DirectoryPage = {
 type SearchValue = string | string[] | undefined;
 
 /**
- * Read-only user list for the Super Admin. A one-character search is ignored
+ * User list for the Super Admin. A one-character search is ignored
  * and the full page stays visible, same as the audit actor filter.
  */
 export async function listUserDirectory(query: DirectoryQuery): Promise<DirectoryPage> {
@@ -46,6 +47,7 @@ export async function listUserDirectory(query: DirectoryQuery): Promise<Director
     role: string;
     companies: string;
     createdAt: Date | string;
+    disabledAt: Date | string | null;
   }>(sql`
     SELECT u.id,
            u.name,
@@ -57,7 +59,8 @@ export async function listUserDirectory(query: DirectoryQuery): Promise<Director
              JOIN company c ON c.id = m.company_id
              WHERE m.user_id = u.id AND m.role = 'COMPANY_ADMIN'
            ), '') AS companies,
-           u.created_at AS "createdAt"
+           u.created_at AS "createdAt",
+           u.disabled_at AS "disabledAt"
     FROM "user" u
     WHERE ${where}
     ORDER BY u.created_at DESC, u.id ASC
@@ -76,6 +79,7 @@ export async function listUserDirectory(query: DirectoryQuery): Promise<Director
       role: row.role,
       companies: row.companies,
       createdAt: row.createdAt instanceof Date ? row.createdAt : new Date(row.createdAt),
+      disabledAt: row.disabledAt == null ? null : row.disabledAt instanceof Date ? row.disabledAt : new Date(row.disabledAt),
     })),
     hasNextPage,
     search: trimmed,

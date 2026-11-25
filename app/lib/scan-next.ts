@@ -16,8 +16,9 @@ export function scanNextPath(next: string | null | undefined) {
   return "/home";
 }
 
-export function accountChoiceLinks(token: string) {
-  const next = encodeURIComponent(`${SCAN_PAGE}?t=${encodeURIComponent(token)}`);
+/** The held scan lives in the cookie, so the return path does not carry the QR. */
+export function accountChoiceLinks() {
+  const next = encodeURIComponent(SCAN_PAGE);
   return {
     login: `/login?next=${next}`,
     register: `/register?next=${next}`,

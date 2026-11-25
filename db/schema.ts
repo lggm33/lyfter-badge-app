@@ -208,6 +208,20 @@ export const xpLedger = pgTable("xp_ledger", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const scanHold = pgTable(
+  "scan_hold",
+  {
+    id: text("id").primaryKey(),
+    tokenHash: text("token_hash").notNull().unique(),
+    kind: text("kind").notNull(),
+    subjectId: text("subject_id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    consumedAt: timestamp("consumed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [check("scan_hold_kind_known", sql`${table.kind} IN ('badge', 'checkin')`)],
+);
+
 export const qrDisplay = pgTable("qr_display", {
   id: text("id").primaryKey(),
   eventId: text("event_id")

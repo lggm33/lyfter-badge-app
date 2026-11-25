@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { authClient } from "@/app/lib/auth-client";
+import { ensureActiveSessionAction } from "@/app/lib/session-actions";
 import { Button } from "@/components/ui/button";
 import { FormField } from "@/components/ui/form-field";
 
-export function LoginForm({ redirectTo = "/home" }: { redirectTo?: string }) {
+export function LoginForm({ redirectTo = "/home", disabled = false }: { redirectTo?: string; disabled?: boolean }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(disabled ? "Tu cuenta está desactivada." : null);
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSubmit(event: React.SubmitEvent<HTMLFormElement>) {
@@ -25,6 +26,12 @@ export function LoginForm({ redirectTo = "/home" }: { redirectTo?: string }) {
 
     if (signInError) {
       setError(signInError.message ?? "No pudimos iniciar sesión.");
+      return;
+    }
+
+    const session = await ensureActiveSessionAction();
+    if (session === "disabled") {
+      setError("Tu cuenta está desactivada.");
       return;
     }
 

@@ -27,7 +27,7 @@ export default async function EventAttendancePage({
         <h1 className="mt-3 text-4xl font-black tracking-tight text-slate-800">Asistencia</h1>
         <p className="mt-3 text-slate-600">Quién llegó y quién canjeó cada badge.</p>
       </div>
-      <EventAttendanceView attendance={attendance} basePath={`/company/${companyId}/events/${eventId}/asistencia`} />
+      <EventAttendanceView attendance={attendance} basePath={`/company/${companyId}/events/${eventId}/attendance`} />
       <Link className="text-sm font-bold text-slate-700" href={`/company/${companyId}#eventos`}>
         ← Volver a los eventos
       </Link>

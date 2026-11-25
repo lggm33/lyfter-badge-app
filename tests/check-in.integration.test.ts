@@ -121,15 +121,12 @@ describe("check-in", () => {
     }
   });
 
-  it("acepta un evento ACTIVE que todavía no empezó", async () => {
+  it("rechaza un evento ACTIVE que todavía no empezó", async () => {
     const eventId = await insertEvent("ACTIVE", shift(60), shift(120), "Antes de empezar");
     const token = signQrToken({ kind: "checkin", subjectId: eventId });
 
-    await expect(checkIn(token, userA)).resolves.toMatchObject({
-      ok: true,
-      outcome: "checked_in",
-      eventName: "Antes de empezar",
-    });
+    await expect(checkIn(token, userA)).resolves.toEqual({ ok: false, reason: "event_not_started" });
+    await expect(memberships(eventId, userA)).resolves.toHaveLength(0);
   });
 
   it("no escribe si no hay sesión", async () => {
@@ -167,9 +164,9 @@ describe("check-in", () => {
     expect(scanNextPath("https://evil.example/scan?t=1")).toBe("/home");
     expect(scanNextPath("/scan?t=abc")).toBe("/scan?t=abc");
     expect(scanNextPath("/scan")).toBe("/scan");
-    expect(accountChoiceLinks("abc")).toEqual({
-      login: "/login?next=%2Fscan%3Ft%3Dabc",
-      register: "/register?next=%2Fscan%3Ft%3Dabc",
+    expect(accountChoiceLinks()).toEqual({
+      login: "/login?next=%2Fscan",
+      register: "/register?next=%2Fscan",
     });
   });
 });

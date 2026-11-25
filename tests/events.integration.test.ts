@@ -81,11 +81,12 @@ describe("event actions integration", () => {
     await expect(db.select({ status: event.status }).from(event).where(eq(event.id, eventId))).resolves.toMatchObject([{ status: "ACTIVE" }]);
   });
 
-  it("finishes active events after their end time when listing", async () => {
+  it("reports an ended event as finished without writing the row", async () => {
     const eventId = randomUUID();
     await db.insert(event).values({ id: eventId, companyId, name: "Finished", slug: "finished", startsAt: new Date(Date.now() - 2 * 60 * 60 * 1000), endsAt: new Date(Date.now() - 60 * 60 * 1000), status: "ACTIVE" });
     headersMock.mockResolvedValueOnce(new Headers({ cookie }));
     await expect(listMyCompanyEvents(companyId)).resolves.toEqual(expect.arrayContaining([expect.objectContaining({ id: eventId, status: "FINISHED" })]));
+    await expect(db.select({ status: event.status }).from(event).where(eq(event.id, eventId))).resolves.toEqual([{ status: "ACTIVE" }]);
   });
 
   it("creates, updates, lists and deletes badges only for draft events", async () => {
